@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package xray.app.httpapi;
+option csharp_namespace = "Xray.App.Httpapi";
+option go_package = "github.com/xtls/xray-core/app/httpapi";
+option java_package = "com.xray.app.httpapi";
+option java_multiple_files = true;
+
+// Config is the settings for the optional REST/JSON HTTP API server.
+message Config {
+  string listen = 1;
+  string username = 2;
+  string password = 3;
+  // Default path for /api/config/import when "path" form field is empty.
+  string config_path = 4;
+}

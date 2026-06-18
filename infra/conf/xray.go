@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/xtls/xray-core/app/dispatcher"
 	"github.com/xtls/xray-core/app/proxyman"
 	"github.com/xtls/xray-core/app/router"
@@ -206,6 +208,27 @@ func (c *InboundDetourConfig) Build() (*core.InboundHandlerConfig, error) {
 	}, nil
 }
 
+// BuildProxySettingsOnly builds only the proxy settings from Protocol and Settings (no listen/port).
+// Use this when only tag and settings.clients are needed (e.g. add users via API).
+func (c *InboundDetourConfig) BuildProxySettingsOnly() (proto.Message, error) {
+	if c.Protocol == "" {
+		return nil, errors.New("protocol required")
+	}
+	settings := []byte("{}")
+	if c.Settings != nil {
+		settings = ([]byte)(*c.Settings)
+	}
+	rawConfig, err := inboundConfigLoader.LoadWithID(settings, c.Protocol)
+	if err != nil {
+		return nil, errors.New("failed to load inbound detour config for protocol ", c.Protocol).Base(err)
+	}
+	ts, err := rawConfig.(Buildable).Build()
+	if err != nil {
+		return nil, errors.New("failed to build inbound handler for protocol ", c.Protocol).Base(err)
+	}
+	return ts, nil
+}
+
 type OutboundDetourConfig struct {
 	Protocol       string           `json:"protocol"`
 	SendThrough    *string          `json:"sendThrough"`
@@ -262,7 +285,7 @@ func (c *OutboundDetourConfig) Build() (*core.OutboundHandlerConfig, error) {
 
 	if c.SendThrough != nil {
 		address := ParseSendThough(c.SendThrough)
-		//Check if CIDR exists
+		// Check if CIDR exists
 		if strings.Contains(*c.SendThrough, "/") {
 			senderSettings.ViaCidr = strings.Split(*c.SendThrough, "/")[1]
 		} else {
@@ -351,6 +374,7 @@ type Config struct {
 	OutboundConfigs  []OutboundDetourConfig  `json:"outbounds"`
 	Policy           *PolicyConfig           `json:"policy"`
 	API              *APIConfig              `json:"api"`
+	HttpAPI          *HTTPAPIConfig          `json:"httpapi"`
 	Metrics          *MetricsConfig          `json:"metrics"`
 	Stats            *StatsConfig            `json:"stats"`
 	Reverse          *ReverseConfig          `json:"reverse"`
@@ -404,6 +428,9 @@ func (c *Config) Override(o *Config, fn string) {
 	if o.API != nil {
 		c.API = o.API
 	}
+	if o.HttpAPI != nil {
+		c.HttpAPI = o.HttpAPI
+	}
 	if o.Metrics != nil {
 		c.Metrics = o.Metrics
 	}
@@ -441,7 +468,6 @@ func (c *Config) Override(o *Config, fn string) {
 				c.InboundConfigs = append(c.InboundConfigs, o.InboundConfigs[i])
 				errors.LogInfo(context.Background(), "[", fn, "] appended inbound with tag: ", o.InboundConfigs[i].Tag)
 			}
-
 		}
 	}
 
@@ -495,6 +521,13 @@ func (c *Config) Build() (*core.Config, error) {
 			return nil, errors.New("failed to build metrics configuration").Base(err)
 		}
 		config.App = append(config.App, serial.ToTypedMessage(metricsConf))
+	}
+	if c.HttpAPI != nil {
+		httpapiConf, err := c.HttpAPI.Build()
+		if err != nil {
+			return nil, errors.New("failed to build httpapi configuration").Base(err)
+		}
+		config.App = append(config.App, serial.ToTypedMessage(httpapiConf))
 	}
 	if c.Stats != nil {
 		statsConf, err := c.Stats.Build()

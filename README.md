@@ -164,6 +164,49 @@
   - [mihomo](https://github.com/MetaCubeX/mihomo)
   - [sing-box](https://github.com/SagerNet/sing-box)
 
+## HTTP API
+
+Xray can expose a REST/JSON HTTP API for automation and panels. Add an `httpapi` block to your config (for example `config.json`):
+
+```json
+{
+  "httpapi": {
+    "listen": "127.0.0.1:8080"
+  }
+}
+```
+
+Start Xray with `xray run -c config.json`. When the HTTP API is enabled, the log shows: `HTTP API listening on 127.0.0.1:8080`.
+
+### Optional Basic Authentication
+
+HTTP Basic authentication is **optional**. By default, if you only set `listen`, the API accepts requests without credentials (suitable for local use).
+
+To protect the API, set **both** `username` and `password`:
+
+```json
+{
+  "httpapi": {
+    "listen": "127.0.0.1:8080",
+    "username": "admin",
+    "password": "your-secret"
+  }
+}
+```
+
+- If either `username` or `password` is omitted or empty, authentication is **not** enforced.
+- When both are set, every endpoint requires HTTP Basic auth (`Authorization: Basic ...`).
+
+Example with curl:
+
+```bash
+curl -u admin:your-secret 'http://127.0.0.1:8080/api/stats/sys'
+```
+
+Full endpoint reference: [docs/HTTPAPI.md](docs/HTTPAPI.md) · [HTML docs](docs/httpapi.html) (open in browser)
+
+Custom extensions are isolated under `app/httpapi/` and load like built-in apps (`metrics`). After merging upstream, only `main/distro/all/all.go` and `infra/conf/xray.go` may need attention — see [contrib/MODIFICATIONS.md](contrib/MODIFICATIONS.md).
+
 ## Contributing
 
 [Code of Conduct](https://github.com/XTLS/Xray-core/blob/main/CODE_OF_CONDUCT.md)
