@@ -17,7 +17,6 @@ import (
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/protocol"
-	"github.com/xtls/xray-core/common/strmatcher"
 	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/common/platform"
 	"github.com/xtls/xray-core/core"
@@ -245,11 +244,6 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 	}
 	pattern := r.URL.Query().Get("pattern")
 	reset := r.URL.Query().Get("reset") == "true" || r.URL.Query().Get("reset") == "1"
-	matcher, err := strmatcher.Substr.New(pattern)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
 	manager, ok := s.statsManager.(*stats.Manager)
 	if !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "QueryStats only works with stats.Manager"})
@@ -257,7 +251,7 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 	}
 	var statList []map[string]interface{}
 	manager.VisitCounters(func(name string, c feature_stats.Counter) bool {
-		if matcher.Match(name) {
+		if strings.Contains(name, pattern) {
 			var value int64
 			if reset {
 				value = c.Set(0)
@@ -319,9 +313,10 @@ func (s *Server) handleStatsOnlineIpList(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	ips := make(map[string]int64)
-	for ip, t := range c.IpTimeMap() {
-		ips[ip] = t.Unix()
-	}
+	c.ForEach(func(ip string, lastSeen int64) bool {
+		ips[ip] = lastSeen
+		return true
+	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name, "ips": ips})
 }
 
@@ -390,9 +385,10 @@ func (s *Server) handleGetAllOnlineUsersWithIps(w http.ResponseWriter, r *http.R
 			om := s.statsManager.GetOnlineMap(name)
 			ips := make(map[string]int64)
 			if om != nil {
-				for ip, t := range om.IpTimeMap() {
-					ips[ip] = t.Unix()
-				}
+				om.ForEach(func(ip string, lastSeen int64) bool {
+					ips[ip] = lastSeen
+					return true
+				})
 			}
 			ch <- userIps{User: onlineUserNameToEmail(name), Ips: ips}
 		}(fullName)
@@ -560,7 +556,7 @@ func extractInboundUsers(inb *core.InboundHandlerConfig) []*protocol.User {
 	case *vmessin.Config:
 		return ty.User
 	case *vlessin.Config:
-		return ty.Clients
+		return ty.Users
 	case *trojan.ServerConfig:
 		return ty.Users
 	case *shadowsocks.ServerConfig:
