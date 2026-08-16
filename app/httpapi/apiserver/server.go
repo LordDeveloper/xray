@@ -7,18 +7,21 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/xtls/xray-core/app/commander"
 	"github.com/xtls/xray-core/app/log"
+	routercmd "github.com/xtls/xray-core/app/router/command"
 	"github.com/xtls/xray-core/app/stats"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/protocol"
 	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/common/platform"
+	"github.com/xtls/xray-core/common/userconn"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/outbound"
@@ -65,6 +68,7 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 	common.Must(instance.RequireFeatures(func(sm feature_stats.Manager) {
 		s.statsManager = sm
 	}, false))
+	s.routingSvc = routercmd.NewRoutingServer(s.router, nil)
 
 	mux := http.NewServeMux()
 
@@ -82,20 +86,24 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 
 	// Inbounds
 	mux.HandleFunc("/api/inbounds/add", s.handleAddInbounds)
+	mux.HandleFunc("/api/inbounds/edit", s.handleEditInbounds)
 	mux.HandleFunc("/api/inbounds/remove", s.handleRemoveInbounds)
 	mux.HandleFunc("/api/inbounds/list", s.handleListInbounds)
 	mux.HandleFunc("/api/inbounds/users/add", s.handleAddInboundUsers)
+	mux.HandleFunc("/api/inbounds/users/edit", s.handleEditInboundUsers)
 	mux.HandleFunc("/api/inbounds/users/remove", s.handleRemoveInboundUsers)
 	mux.HandleFunc("/api/inbounds/users", s.handleGetInboundUsers)
 	mux.HandleFunc("/api/inbounds/users/count", s.handleGetInboundUsersCount)
 
 	// Outbounds
 	mux.HandleFunc("/api/outbounds/add", s.handleAddOutbounds)
+	mux.HandleFunc("/api/outbounds/edit", s.handleEditOutbounds)
 	mux.HandleFunc("/api/outbounds/remove", s.handleRemoveOutbounds)
 	mux.HandleFunc("/api/outbounds/list", s.handleListOutbounds)
 
 	// Router / Rules / Balancer
 	mux.HandleFunc("/api/rules/add", s.handleAddRules)
+	mux.HandleFunc("/api/rules/edit", s.handleEditRules)
 	mux.HandleFunc("/api/rules/remove", s.handleRemoveRules)
 	mux.HandleFunc("/api/rules/list", s.handleListRules)
 	mux.HandleFunc("/api/balancer/info", s.handleBalancerInfo)
@@ -105,7 +113,10 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 	// Config file utilities
 	mux.HandleFunc("/api/config/import", s.handleConfigExport)
 
-	handler := s.withAuth(mux)
+	// Interactive API docs (embedded HTML; canonical URL /docs/)
+	mountDocs(mux)
+
+	handler := withRecover(s.withAuth(mux))
 	s.httpServer = &http.Server{Addr: s.listen, Handler: handler}
 	return s, nil
 }
@@ -128,6 +139,7 @@ type Server struct {
 	ihm          inbound.Manager
 	ohm          outbound.Manager
 	router       routing.Router
+	routingSvc   routercmd.RoutingServiceServer
 	statsManager feature_stats.Manager
 	httpServer   *http.Server
 	startTime    time.Time
@@ -144,10 +156,17 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isDocsPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		user, pass, ok := r.BasicAuth()
 		if !ok || user != s.authUser || pass != s.authPass {
 			w.Header().Set("WWW-Authenticate", "Basic realm='Xray HTTP API'")
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			writeJSON(w, http.StatusUnauthorized, APIErrorResponse{
+				Error: "unauthorized",
+				Code:  "unauthorized",
+			})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -188,9 +207,55 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+func (s *Server) finishMutation(w http.ResponseWriter, body interface{}, save func() error) {
+	if save != nil && s.configPath != "" {
+		if err := save(); err != nil {
+			writeMutationSaveError(w, err)
+			return
+		}
+	}
+	switch v := body.(type) {
+	case map[string]interface{}:
+		writeJSON(w, http.StatusOK, v)
+	case map[string]string:
+		writeJSON(w, http.StatusOK, v)
+	case map[string]int:
+		writeJSON(w, http.StatusOK, v)
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+func (s *Server) runtimeInboundTags(ctx context.Context) map[string]struct{} {
+	tags := make(map[string]struct{})
+	for _, h := range s.ihm.ListHandlers(ctx) {
+		if tag := h.Tag(); tag != "" {
+			tags[tag] = struct{}{}
+		}
+	}
+	return tags
+}
+
+func (s *Server) runtimeOutboundTags(ctx context.Context) map[string]struct{} {
+	tags := make(map[string]struct{})
+	for _, h := range s.ohm.ListHandlers(ctx) {
+		if _, ok := h.(*commander.Outbound); ok {
+			continue
+		}
+		if tag := h.Tag(); tag != "" {
+			tags[tag] = struct{}{}
+		}
+	}
+	return tags
+}
+
 func allowMethod(w http.ResponseWriter, r *http.Request, method string) bool {
 	if r.Method != method {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		writeJSON(w, http.StatusMethodNotAllowed, APIErrorResponse{
+			Error:  "method not allowed",
+			Code:   "method_not_allowed",
+			Details: []string{"expected " + method + ", got " + r.Method},
+		})
 		return false
 	}
 	return true
@@ -203,15 +268,15 @@ func (s *Server) handleLoggerRestart(w http.ResponseWriter, r *http.Request) {
 	}
 	logger := s.instance.GetFeature((*log.Instance)(nil))
 	if logger == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unable to get logger instance"})
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "unable to get logger instance")
 		return
 	}
 	if err := logger.Close(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	if err := logger.Start(); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -226,7 +291,11 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 	reset := r.URL.Query().Get("reset") == "true" || r.URL.Query().Get("reset") == "1"
 	c := s.statsManager.GetCounter(name)
 	if c == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": name + " not found"})
+		if looksLikeRegexPattern(name) {
+		writeAPIErrorMsg(w, http.StatusBadRequest, "pattern looks like a regex; use GET /api/stats/query?pattern="+name)
+			return
+		}
+		writeAPIErrorMsg(w, http.StatusNotFound, name+" not found")
 		return
 	}
 	var value int64
@@ -244,14 +313,29 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 	}
 	pattern := r.URL.Query().Get("pattern")
 	reset := r.URL.Query().Get("reset") == "true" || r.URL.Query().Get("reset") == "1"
+	grouped := r.URL.Query().Get("grouped") == "true" || r.URL.Query().Get("grouped") == "1"
+	if grouped {
+		include, err := resolveGroupFilter(pattern, r.URL.Query().Get("group"))
+		if err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		statsGrouped, err := collectGroupedStats(s.statsManager, pattern, reset)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"stats": statsGrouped.toFilteredMap(include)})
+		return
+	}
 	manager, ok := s.statsManager.(*stats.Manager)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "QueryStats only works with stats.Manager"})
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "QueryStats only works with stats.Manager")
 		return
 	}
 	var statList []map[string]interface{}
 	manager.VisitCounters(func(name string, c feature_stats.Counter) bool {
-		if strings.Contains(name, pattern) {
+		if matchStatPattern(name, pattern) {
 			var value int64
 			if reset {
 				value = c.Set(0)
@@ -263,6 +347,16 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"stat": statList})
+}
+
+// onlineUserNameToEmail extracts email from stats counter name "user>>>email>>>online".
+func onlineUserNameToEmail(name string) string {
+	const prefix = "user>>>"
+	const suffix = ">>>online"
+	if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) && len(name) > len(prefix)+len(suffix) {
+		return name[len(prefix) : len(name)-len(suffix)]
+	}
+	return name
 }
 
 func (s *Server) handleSysStats(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +388,7 @@ func (s *Server) handleStatsOnline(w http.ResponseWriter, r *http.Request) {
 	name := "user>>>" + email + ">>>online"
 	c := s.statsManager.GetOnlineMap(name)
 	if c == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": name + " not found"})
+		writeAPIErrorMsg(w, http.StatusNotFound, name+" not found")
 		return
 	}
 	value := int64(c.Count())
@@ -309,7 +403,7 @@ func (s *Server) handleStatsOnlineIpList(w http.ResponseWriter, r *http.Request)
 	name := "user>>>" + email + ">>>online"
 	c := s.statsManager.GetOnlineMap(name)
 	if c == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": name + " not found"})
+		writeAPIErrorMsg(w, http.StatusNotFound, name+" not found")
 		return
 	}
 	ips := make(map[string]int64)
@@ -330,16 +424,6 @@ func (s *Server) handleGetAllOnlineUsers(w http.ResponseWriter, r *http.Request)
 		users = append(users, onlineUserNameToEmail(name))
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"users": users})
-}
-
-// onlineUserNameToEmail extracts email from stats counter name "user>>>email>>>online".
-func onlineUserNameToEmail(name string) string {
-	const prefix = "user>>>"
-	const suffix = ">>>online"
-	if strings.HasPrefix(name, prefix) && strings.HasSuffix(name, suffix) && len(name) > len(prefix)+len(suffix) {
-		return name[len(prefix) : len(name)-len(suffix)]
-	}
-	return name
 }
 
 // handleGetAllOnlineUsersWithIps returns all online users and their connected IPs (with last-seen time).
@@ -413,24 +497,77 @@ func (s *Server) handleAddInbounds(w http.ResponseWriter, r *http.Request) {
 		Inbounds []json.RawMessage `json:"inbounds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
+	if ConfigBridge.ValidateInboundBatch != nil {
+		if err := ConfigBridge.ValidateInboundBatch(body.Inbounds); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	ctx := r.Context()
 	for _, raw := range body.Inbounds {
 		built, err := ConfigBridge.BuildInboundHandler(raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "build inbound: " + err.Error()})
+			writeValidationError(w, err)
 			return
 		}
 		if built.Tag == "" {
 			continue
 		}
-		if err := core.AddInboundHandler(s.instance, built); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		if err := s.protoAddInbound(ctx, built); err != nil {
+			writeAPIError(w, err)
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigInbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInbounds(s.configPath, body.Inbounds, nil)
+	})
+}
+
+func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodPost) {
+		return
+	}
+	var body struct {
+		Inbounds []json.RawMessage `json:"inbounds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	if len(body.Inbounds) == 0 {
+		writeValidationError(w, errors.New("inbounds array is required"))
+		return
+	}
+	if ConfigBridge.ValidateInboundBatch != nil {
+		if err := ConfigBridge.ValidateInboundBatch(body.Inbounds); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	ctx := r.Context()
+	for _, raw := range body.Inbounds {
+		built, err := ConfigBridge.BuildInboundHandler(raw)
+		if err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		if err := s.protoReplaceInbound(ctx, built); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+	}
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigInbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInbounds(s.configPath, body.Inbounds, nil)
+	})
 }
 
 func (s *Server) handleRemoveInbounds(w http.ResponseWriter, r *http.Request) {
@@ -441,14 +578,25 @@ func (s *Server) handleRemoveInbounds(w http.ResponseWriter, r *http.Request) {
 		Tags []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
+	}
+	if ConfigBridge.ValidateNonEmptyTags != nil {
+		if err := ConfigBridge.ValidateNonEmptyTags("tags", body.Tags); err != nil {
+			writeValidationError(w, err)
+			return
+		}
 	}
 	ctx := r.Context()
 	for _, tag := range body.Tags {
-		_ = s.ihm.RemoveHandler(ctx, tag)
+		_ = s.protoRemoveInbound(ctx, tag)
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigInbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInbounds(s.configPath, nil, body.Tags)
+	})
 }
 
 func (s *Server) handleListInbounds(w http.ResponseWriter, r *http.Request) {
@@ -457,19 +605,24 @@ func (s *Server) handleListInbounds(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	tagsOnly := r.URL.Query().Get("tags_only") == "1" || r.URL.Query().Get("isOnlyTags") == "true"
-	handlers := s.ihm.ListHandlers(ctx)
-	var inbounds []interface{}
-	for _, h := range handlers {
-		if tagsOnly {
+	if tagsOnly {
+		var inbounds []interface{}
+		for _, h := range s.ihm.ListHandlers(ctx) {
 			inbounds = append(inbounds, map[string]string{"tag": h.Tag()})
-		} else {
-			inbounds = append(inbounds, map[string]interface{}{
-				"tag":               h.Tag(),
-				"receiverSettings": h.ReceiverSettings(),
-				"proxySettings":    h.ProxySettings(),
-			})
 		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"inbounds": inbounds})
+		return
 	}
+	if s.configPath == "" || ConfigBridge.ListConfigInbounds == nil {
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "config path not set or list not registered")
+		return
+	}
+	inbounds, err := ConfigBridge.ListConfigInbounds(s.configPath, s.runtimeInboundTags(ctx))
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	s.overlayInboundClients(ctx, inbounds)
 	writeJSON(w, http.StatusOK, map[string]interface{}{"inbounds": inbounds})
 }
 
@@ -485,28 +638,53 @@ func (s *Server) handleAddInboundUsers(w http.ResponseWriter, r *http.Request) {
 		} `json:"inbounds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
+		return
+	}
+	if len(body.Inbounds) == 0 {
+		writeValidationError(w, errors.New("inbounds array is required"))
 		return
 	}
 	ctx := r.Context()
-	added := 0
+	type userPatch struct {
+		tag      string
+		protocol string
+		settings *json.RawMessage
+	}
+	pending := make([]userPatch, 0, len(body.Inbounds))
 	for _, inb := range body.Inbounds {
 		if inb.Tag == "" {
-			continue
+			writeValidationError(w, errors.New("inbound tag is required"))
+			return
+		}
+		if inb.Settings == nil {
+			writeValidationError(w, errors.New("settings is required for inbound ", inb.Tag))
+			return
 		}
 		handler, err := s.ihm.GetHandler(ctx, inb.Tag)
 		if err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "inbound " + inb.Tag + ": " + err.Error()})
+			writeAPIErrorStatus(w, http.StatusNotFound, errors.New("inbound "+inb.Tag+": "+err.Error()))
 			return
 		}
 		protocol, err := getInboundProtocol(handler)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "inbound " + inb.Tag + ": " + err.Error()})
+			writeValidationError(w, errors.New("inbound "+inb.Tag+": "+err.Error()))
 			return
 		}
-		built, err := ConfigBridge.BuildInboundProxyOnly(inb.Tag, protocol, inb.Settings)
+		if ConfigBridge.ValidateInboundUserSettings != nil {
+			if err := ConfigBridge.ValidateInboundUserSettings(protocol, inb.Settings); err != nil {
+				writeValidationError(w, err)
+				return
+			}
+		}
+		pending = append(pending, userPatch{tag: inb.Tag, protocol: protocol, settings: inb.Settings})
+	}
+	added := 0
+	var filePatches []InboundUserFilePatch
+	for _, inb := range pending {
+		built, err := ConfigBridge.BuildInboundProxyOnly(inb.tag, inb.protocol, inb.settings)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "build settings for " + inb.Tag + ": " + err.Error()})
+			writeValidationError(w, errors.New("build settings for "+inb.tag+": "+err.Error()))
 			return
 		}
 		users := extractInboundUsers(built)
@@ -514,34 +692,101 @@ func (s *Server) handleAddInboundUsers(w http.ResponseWriter, r *http.Request) {
 			if user.Email == "" {
 				continue
 			}
-			if err := s.addUser(ctx, inb.Tag, user); err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			if err := s.protoAlterAddUser(ctx, inb.tag, user); err != nil {
+				writeAPIError(w, err)
 				return
 			}
 			added++
 		}
+		filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"added_users": added})
+	s.finishMutation(w, map[string]int{"added_users": added}, func() error {
+		if ConfigBridge.PatchConfigInboundUsers == nil || len(filePatches) == 0 {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInboundUsers(s.configPath, filePatches)
+	})
 }
 
-func (s *Server) addUser(ctx context.Context, tag string, user *protocol.User) error {
-	handler, err := s.ihm.GetHandler(ctx, tag)
-	if err != nil {
-		return err
+func (s *Server) handleEditInboundUsers(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodPost) {
+		return
 	}
-	p, err := getInbound(handler)
-	if err != nil {
-		return err
+	var body struct {
+		Inbounds []struct {
+			Tag      string           `json:"tag"`
+			Settings *json.RawMessage `json:"settings"`
+		} `json:"inbounds"`
 	}
-	um, ok := p.(proxy.UserManager)
-	if !ok {
-		return errors.New("proxy is not a UserManager")
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeDecodeError(w, err)
+		return
 	}
-	mUser, err := user.ToMemoryUser()
-	if err != nil {
-		return errors.New("failed to parse user").Base(err)
+	if len(body.Inbounds) == 0 {
+		writeValidationError(w, errors.New("inbounds array is required"))
+		return
 	}
-	return um.AddUser(ctx, mUser)
+	ctx := r.Context()
+	type userPatch struct {
+		tag      string
+		protocol string
+		settings *json.RawMessage
+	}
+	pending := make([]userPatch, 0, len(body.Inbounds))
+	for _, inb := range body.Inbounds {
+		if inb.Tag == "" {
+			writeValidationError(w, errors.New("inbound tag is required"))
+			return
+		}
+		if inb.Settings == nil {
+			writeValidationError(w, errors.New("settings is required for inbound ", inb.Tag))
+			return
+		}
+		handler, err := s.ihm.GetHandler(ctx, inb.Tag)
+		if err != nil {
+			writeAPIErrorStatus(w, http.StatusNotFound, errors.New("inbound "+inb.Tag+": "+err.Error()))
+			return
+		}
+		protocol, err := getInboundProtocol(handler)
+		if err != nil {
+			writeValidationError(w, errors.New("inbound "+inb.Tag+": "+err.Error()))
+			return
+		}
+		if ConfigBridge.ValidateInboundUserSettings != nil {
+			if err := ConfigBridge.ValidateInboundUserSettings(protocol, inb.Settings); err != nil {
+				writeValidationError(w, err)
+				return
+			}
+		}
+		pending = append(pending, userPatch{tag: inb.Tag, protocol: protocol, settings: inb.Settings})
+	}
+	updated := 0
+	var filePatches []InboundUserFilePatch
+	for _, inb := range pending {
+		built, err := ConfigBridge.BuildInboundProxyOnly(inb.tag, inb.protocol, inb.settings)
+		if err != nil {
+			writeValidationError(w, errors.New("build settings for "+inb.tag+": "+err.Error()))
+			return
+		}
+		users := extractInboundUsers(built)
+		for _, user := range users {
+			if user.Email == "" {
+				continue
+			}
+			if err := s.protoReplaceUser(ctx, inb.tag, user); err != nil {
+				writeAPIError(w, err)
+				return
+			}
+			updated++
+		}
+		filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
+	}
+	s.finishMutation(w, map[string]int{"updated_users": updated}, func() error {
+		if ConfigBridge.PatchConfigInboundUsers == nil || len(filePatches) == 0 {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInboundUsers(s.configPath, filePatches)
+	})
 }
 
 func extractInboundUsers(inb *core.InboundHandlerConfig) []*protocol.User {
@@ -577,36 +822,41 @@ func (s *Server) handleRemoveInboundUsers(w http.ResponseWriter, r *http.Request
 		Emails []string `json:"emails"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
 	if body.Tag == "" || len(body.Emails) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tag and emails required"})
+		writeValidationError(w, errors.New("tag and emails are required"))
 		return
+	}
+	if ConfigBridge.ValidateNonEmptyEmails != nil {
+		if err := ConfigBridge.ValidateNonEmptyEmails(body.Emails); err != nil {
+			writeValidationError(w, err)
+			return
+		}
 	}
 	ctx := r.Context()
-	handler, err := s.ihm.GetHandler(ctx, body.Tag)
-	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-		return
-	}
-	p, err := getInbound(handler)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-	um, ok := p.(proxy.UserManager)
-	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxy is not a UserManager"})
+	if _, err := s.ihm.GetHandler(ctx, body.Tag); err != nil {
+		writeAPIErrorStatus(w, http.StatusNotFound, err)
 		return
 	}
 	removed := 0
+	dropped := 0
 	for _, email := range body.Emails {
-		if err := um.RemoveUser(ctx, email); err == nil {
+		dropped += userconn.Kick(body.Tag, email)
+		if err := s.protoAlterRemoveUser(ctx, body.Tag, email); err == nil {
 			removed++
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]int{"removed_users": removed})
+	s.finishMutation(w, map[string]interface{}{
+		"removed_users":       removed,
+		"dropped_connections": dropped,
+	}, func() error {
+		if ConfigBridge.PatchConfigInboundUsersRemove == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigInboundUsersRemove(s.configPath, body.Tag, body.Emails)
+	})
 }
 
 func (s *Server) handleGetInboundUsers(w http.ResponseWriter, r *http.Request) {
@@ -614,35 +864,85 @@ func (s *Server) handleGetInboundUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tag := r.URL.Query().Get("tag")
+	if tag == "" {
+		writeAPIErrorMsg(w, http.StatusBadRequest, "tag required")
+		return
+	}
 	email := r.URL.Query().Get("email")
 	ctx := r.Context()
 	handler, err := s.ihm.GetHandler(ctx, tag)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIErrorStatus(w, http.StatusNotFound, err)
 		return
 	}
 	p, err := getInbound(handler)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	um, ok := p.(proxy.UserManager)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxy is not a UserManager"})
+		writeAPIErrorMsg(w, http.StatusBadRequest, "proxy is not a UserManager")
 		return
 	}
-	var users []*protocol.User
-	if email != "" {
-		u := um.GetUser(ctx, email)
-		if u != nil {
-			users = []*protocol.User{protocol.ToProtoUser(u)}
-		}
-	} else {
-		for _, u := range um.GetUsers(ctx) {
-			users = append(users, protocol.ToProtoUser(u))
-		}
+	users, err := s.configClientsFromManager(ctx, handler, um, email)
+	if err != nil {
+		writeAPIError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"users": users})
+}
+
+func (s *Server) configClientsFromManager(ctx context.Context, handler inbound.Handler, um proxy.UserManager, email string) ([]interface{}, error) {
+	protocolName, err := getInboundProtocol(handler)
+	if err != nil {
+		return nil, err
+	}
+	var mem []*protocol.MemoryUser
+	if email != "" {
+		if u := um.GetUser(ctx, email); u != nil {
+			mem = []*protocol.MemoryUser{u}
+		}
+	} else {
+		mem = um.GetUsers(ctx)
+	}
+	if ConfigBridge.ConfigClientsFromMemoryUsers == nil {
+		return []interface{}{}, nil
+	}
+	return ConfigBridge.ConfigClientsFromMemoryUsers(protocolName, mem)
+}
+
+func (s *Server) overlayInboundClients(ctx context.Context, inbounds []interface{}) {
+	if ConfigBridge.OverlayInboundClients == nil {
+		return
+	}
+	for _, item := range inbounds {
+		m, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		handler, err := s.ihm.GetHandler(ctx, tag)
+		if err != nil {
+			continue
+		}
+		protocolName, err := getInboundProtocol(handler)
+		if err != nil {
+			continue
+		}
+		p, err := getInbound(handler)
+		if err != nil {
+			continue
+		}
+		um, ok := p.(proxy.UserManager)
+		if !ok {
+			continue
+		}
+		_ = ConfigBridge.OverlayInboundClients(m, protocolName, um.GetUsers(ctx))
+	}
 }
 
 func (s *Server) handleGetInboundUsersCount(w http.ResponseWriter, r *http.Request) {
@@ -653,17 +953,17 @@ func (s *Server) handleGetInboundUsersCount(w http.ResponseWriter, r *http.Reque
 	ctx := r.Context()
 	handler, err := s.ihm.GetHandler(ctx, tag)
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeAPIErrorStatus(w, http.StatusNotFound, err)
 		return
 	}
 	p, err := getInbound(handler)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	um, ok := p.(proxy.UserManager)
 	if !ok {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proxy is not a UserManager"})
+		writeAPIErrorMsg(w, http.StatusBadRequest, "proxy is not a UserManager")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"count": um.GetUsersCount(ctx)})
@@ -678,24 +978,77 @@ func (s *Server) handleAddOutbounds(w http.ResponseWriter, r *http.Request) {
 		Outbounds []json.RawMessage `json:"outbounds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
+	if ConfigBridge.ValidateOutboundBatch != nil {
+		if err := ConfigBridge.ValidateOutboundBatch(body.Outbounds); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	ctx := r.Context()
 	for _, raw := range body.Outbounds {
 		built, err := ConfigBridge.BuildOutboundHandler(raw)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "build outbound: " + err.Error()})
+			writeValidationError(w, err)
 			return
 		}
 		if built.Tag == "" {
 			continue
 		}
-		if err := core.AddOutboundHandler(s.instance, built); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		if err := s.protoAddOutbound(ctx, built); err != nil {
+			writeAPIError(w, err)
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigOutbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigOutbounds(s.configPath, body.Outbounds, nil)
+	})
+}
+
+func (s *Server) handleEditOutbounds(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodPost) {
+		return
+	}
+	var body struct {
+		Outbounds []json.RawMessage `json:"outbounds"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	if len(body.Outbounds) == 0 {
+		writeValidationError(w, errors.New("outbounds array is required"))
+		return
+	}
+	if ConfigBridge.ValidateOutboundBatch != nil {
+		if err := ConfigBridge.ValidateOutboundBatch(body.Outbounds); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	ctx := r.Context()
+	for _, raw := range body.Outbounds {
+		built, err := ConfigBridge.BuildOutboundHandler(raw)
+		if err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		if err := s.protoReplaceOutbound(ctx, built); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+	}
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigOutbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigOutbounds(s.configPath, body.Outbounds, nil)
+	})
 }
 
 func (s *Server) handleRemoveOutbounds(w http.ResponseWriter, r *http.Request) {
@@ -706,14 +1059,25 @@ func (s *Server) handleRemoveOutbounds(w http.ResponseWriter, r *http.Request) {
 		Tags []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
+	}
+	if ConfigBridge.ValidateNonEmptyTags != nil {
+		if err := ConfigBridge.ValidateNonEmptyTags("tags", body.Tags); err != nil {
+			writeValidationError(w, err)
+			return
+		}
 	}
 	ctx := r.Context()
 	for _, tag := range body.Tags {
-		_ = s.ohm.RemoveHandler(ctx, tag)
+		_ = s.protoRemoveOutbound(ctx, tag)
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigOutbounds == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigOutbounds(s.configPath, nil, body.Tags)
+	})
 }
 
 func (s *Server) handleListOutbounds(w http.ResponseWriter, r *http.Request) {
@@ -721,17 +1085,26 @@ func (s *Server) handleListOutbounds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	handlers := s.ohm.ListHandlers(ctx)
-	var outbounds []interface{}
-	for _, h := range handlers {
-		if _, ok := h.(*commander.Outbound); ok {
-			continue
+	tagsOnly := r.URL.Query().Get("tags_only") == "1" || r.URL.Query().Get("isOnlyTags") == "true"
+	if tagsOnly {
+		var outbounds []interface{}
+		for _, h := range s.ohm.ListHandlers(ctx) {
+			if _, ok := h.(*commander.Outbound); ok {
+				continue
+			}
+			outbounds = append(outbounds, map[string]string{"tag": h.Tag()})
 		}
-		outbounds = append(outbounds, map[string]interface{}{
-			"tag":             h.Tag(),
-			"senderSettings":  h.SenderSettings(),
-			"proxySettings":   h.ProxySettings(),
-		})
+		writeJSON(w, http.StatusOK, map[string]interface{}{"outbounds": outbounds})
+		return
+	}
+	if s.configPath == "" || ConfigBridge.ListConfigOutbounds == nil {
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "config path not set or list not registered")
+		return
+	}
+	outbounds, err := ConfigBridge.ListConfigOutbounds(s.configPath, s.runtimeOutboundTags(ctx))
+	if err != nil {
+		writeAPIError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"outbounds": outbounds})
 }
@@ -742,32 +1115,160 @@ func (s *Server) handleAddRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Routing      json.RawMessage `json:"routing"`
-		ShouldAppend bool            `json:"should_append"`
+		Routing json.RawMessage `json:"routing"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
 	if len(body.Routing) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "routing required"})
+		writeValidationError(w, errors.New("routing is required"))
 		return
 	}
+	if ConfigBridge.ValidateRoutingRules != nil {
+		if err := ConfigBridge.ValidateRoutingRules(body.Routing); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	shouldAppend := r.URL.Query().Get("should_append") == "true" || r.URL.Query().Get("should_append") == "1"
 	config, err := ConfigBridge.BuildRouterRules(body.Routing)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeValidationError(w, err)
 		return
 	}
 	tmsg := cserial.ToTypedMessage(config)
 	if tmsg == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build TypedMessage"})
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "failed to build TypedMessage")
 		return
 	}
-	if err := s.router.AddRule(tmsg, body.ShouldAppend); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := s.protoAddRule(r.Context(), tmsg, shouldAppend); err != nil {
+		writeAPIError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigRulesAdd == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigRulesAdd(s.configPath, body.Routing, !shouldAppend)
+	})
+}
+
+func (s *Server) handleEditRules(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodPost) {
+		return
+	}
+	var body struct {
+		RuleTag  string          `json:"rule_tag"`
+		RuleTags []string        `json:"ruleTags"`
+		Routing  json.RawMessage `json:"routing"`
+		Rule     json.RawMessage `json:"rule"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	ruleTag := strings.TrimSpace(body.RuleTag)
+	if ruleTag == "" && len(body.RuleTags) > 0 {
+		ruleTag = strings.TrimSpace(body.RuleTags[0])
+	}
+	if ruleTag == "" {
+		writeValidationError(w, errors.New("rule_tag is required"))
+		return
+	}
+	ruleInput := body.Routing
+	if len(ruleInput) == 0 {
+		ruleInput = body.Rule
+	}
+	if len(ruleInput) == 0 {
+		writeValidationError(w, errors.New("routing or rule is required"))
+		return
+	}
+	if ConfigBridge.ValidateRoutingRules != nil {
+		wrapped, err := wrapSingleRoutingRule(ruleInput)
+		if err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		if err := ConfigBridge.ValidateRoutingRules(wrapped); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+		ruleInput = wrapped
+	}
+	if err := s.protoRemoveRule(r.Context(), ruleTag); err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	config, err := ConfigBridge.BuildRouterRules(ruleInput)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	tmsg := cserial.ToTypedMessage(config)
+	if tmsg == nil {
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "failed to build TypedMessage")
+		return
+	}
+	if err := s.protoAddRule(r.Context(), tmsg, true); err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
+		if ConfigBridge.PatchConfigRulesEdit == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigRulesEdit(s.configPath, ruleTag, ruleInput)
+	})
+}
+
+func wrapSingleRoutingRule(rule json.RawMessage) (json.RawMessage, error) {
+	if len(rule) == 0 {
+		return nil, errors.New("rule is required")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(rule, &probe); err != nil {
+		return nil, errors.New("invalid rule json").Base(err)
+	}
+	if raw, ok := probe["rules"]; ok {
+		return json.RawMessage(`{"rules":` + string(raw) + `}`), nil
+	}
+	if raw, ok := probe["routing"]; ok {
+		return raw, nil
+	}
+	return json.Marshal(map[string]interface{}{"rules": []json.RawMessage{rule}})
+}
+
+func mergeRuleTags(ruleTags, ruleTags2, tags []string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, tag := range append(append(ruleTags, ruleTags2...), tags...) {
+		tag = strings.TrimSpace(tag)
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		out = append(out, tag)
+	}
+	return out
+}
+
+func sortRuleIndicesDesc(indices []int) []int {
+	if len(indices) == 0 {
+		return nil
+	}
+	out := append([]int(nil), indices...)
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if out[j] > out[i] {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
 }
 
 func (s *Server) handleRemoveRules(w http.ResponseWriter, r *http.Request) {
@@ -775,21 +1276,71 @@ func (s *Server) handleRemoveRules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		RuleTags []string `json:"rule_tags"`
+		RuleTags  []string `json:"rule_tags"`
+		RuleTags2 []string `json:"ruleTags"`
+		Tags      []string `json:"tags"`
+		Indices   []int    `json:"indices"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
-	for _, tag := range body.RuleTags {
-		_ = s.router.RemoveRule(tag)
+	tags := mergeRuleTags(body.RuleTags, body.RuleTags2, body.Tags)
+	if len(tags) == 0 && len(body.Indices) == 0 {
+		writeValidationError(w, errors.New("rule_tags or indices required"))
+		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	removed := 0
+	var warnings []string
+	for _, tag := range tags {
+		if err := s.protoRemoveRule(r.Context(), tag); err != nil {
+			warnings = append(warnings, "rule_tag "+tag+": "+err.Error())
+		} else {
+			removed++
+		}
+	}
+	if len(body.Indices) > 0 {
+		ri, ok := s.router.(interface {
+			RemoveRuleAt(index int) error
+		})
+		if !ok {
+			writeAPIErrorMsg(w, http.StatusInternalServerError, "router does not support index removal")
+			return
+		}
+		for _, idx := range sortRuleIndicesDesc(body.Indices) {
+			if err := ri.RemoveRuleAt(idx); err != nil {
+				warnings = append(warnings, "index "+strconv.Itoa(idx)+": "+err.Error())
+			} else {
+				removed++
+			}
+		}
+	}
+	resp := map[string]interface{}{"removed": removed}
+	if len(warnings) > 0 {
+		resp["warnings"] = warnings
+	}
+	s.finishMutation(w, resp, func() error {
+		if ConfigBridge.PatchConfigRulesRemove == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigRulesRemove(s.configPath, tags, body.Indices)
+	})
 }
 
 func (s *Server) handleListRules(w http.ResponseWriter, r *http.Request) {
 	if !allowMethod(w, r, http.MethodGet) {
 		return
+	}
+	if s.configPath != "" && ConfigBridge.ListConfigRules != nil {
+		rules, err := ConfigBridge.ListConfigRules(s.configPath)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		if rules != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"rules": rules})
+			return
+		}
 	}
 	rules := s.router.ListRule()
 	var list []map[string]string
@@ -829,36 +1380,43 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid multipart form: " + err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	path := strings.TrimSpace(r.FormValue("path"))
 	file, _, err := r.FormFile("file")
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file field is required: " + err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	defer file.Close()
 	data, err := io.ReadAll(file)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read uploaded file: " + err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	if path == "" {
 		path = strings.TrimSpace(s.configPath)
 	}
 	if path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no config path specified and default path is unknown"})
+		writeAPIErrorMsg(w, http.StatusBadRequest, "no config path specified and default path is unknown")
 		return
 	}
-	// Validate JSON syntax to catch malformed configs early.
-	var tmp interface{}
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid config json: " + err.Error()})
-		return
+	// Full Xray config validation before writing to disk.
+	if ConfigBridge.ValidateConfigBytes != nil {
+		if err := ConfigBridge.ValidateConfigBytes(data); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	} else {
+		var tmp interface{}
+		if err := json.Unmarshal(data, &tmp); err != nil {
+			writeDecodeError(w, err)
+			return
+		}
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to write config: " + err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "path": path})
@@ -873,16 +1431,16 @@ func (s *Server) handleBalancerOverride(w http.ResponseWriter, r *http.Request) 
 		Target     string `json:"target"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
 	bo, ok := s.router.(routing.BalancerOverrider)
 	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "unsupported router implementation"})
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "unsupported router implementation")
 		return
 	}
 	if err := bo.SetOverrideTarget(body.BalancerTag, body.Target); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -903,11 +1461,11 @@ func (s *Server) handleSourceIpBlock(w http.ResponseWriter, r *http.Request) {
 		body.RuleTag = "sourceIpBlock"
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
+		writeDecodeError(w, err)
 		return
 	}
 	if body.Outbound == "" || len(body.SourceIPs) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "outbound and source_ips required"})
+		writeAPIErrorMsg(w, http.StatusBadRequest, "outbound and source_ips required")
 		return
 	}
 	inboundTags := []string{}
@@ -919,19 +1477,19 @@ func (s *Server) handleSourceIpBlock(w http.ResponseWriter, r *http.Request) {
 	stringConfig := `{"routing":{"rules":[{"ruleTag":"` + body.RuleTag + `","inboundTag":` + string(jsonInbound) + `,"outboundTag":"` + body.Outbound + `","source":` + string(jsonIps) + `}]}}`
 	config, err := ConfigBridge.BuildRouterRulesFromStr(stringConfig)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeAPIError(w, err)
 		return
 	}
 	if body.Reset {
-		_ = s.router.RemoveRule(body.RuleTag)
+		_ = s.protoRemoveRule(r.Context(), body.RuleTag)
 	}
 	tmsg := cserial.ToTypedMessage(config)
 	if tmsg == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to build TypedMessage"})
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "failed to build TypedMessage")
 		return
 	}
-	if err := s.router.AddRule(tmsg, true); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	if err := s.protoAddRule(r.Context(), tmsg, true); err != nil {
+		writeAPIError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

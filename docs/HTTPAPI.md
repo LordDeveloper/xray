@@ -2,6 +2,12 @@
 
 The HTTP API provides a REST/JSON interface to control and inspect a running Xray instance. It exposes the same capabilities as the `xray api` CLI commands and is intended for automation, dashboards, and third-party integrations.
 
+**Runtime changes:** Mutations use the same **protobuf operation types** as `xray api` (`main/commands/all/api`: `AddInboundRequest`, `AlterInboundRequest` + `AddUserOperation`, `AddRuleRequest`, …), applied **in-process** inside `app/httpapi` — **no restart**, no edits to upstream `app/proxyman`. After success, `config.json` is patched.
+
+**Config file only:** Editing `config.json` on disk alone does **not** update the running process; use this API or restart Xray.
+
+**Interactive docs:** When the API is running, open `http://<listen>/docs/` for a searchable reference with live **Try it** requests, dark/light theme, and all endpoints (including add/edit/remove).
+
 ---
 
 ## Table of Contents
@@ -51,6 +57,8 @@ Minimal config (no authentication):
 ```
 
 After Xray starts, the log will show: `HTTP API listening on 127.0.0.1:8080`.
+
+**Interactive documentation:** open `http://127.0.0.1:8080/docs` in a browser to browse all endpoints and send test requests (Try-it panel). The `/docs` page itself does not require Basic auth; enter credentials in the UI when the API is protected.
 
 When **both** `username` and `password` are set, every HTTP API request must include valid HTTP Basic credentials.
 
@@ -216,13 +224,19 @@ curl 'http://127.0.0.1:8080/api/stats?name=inbound>>>my-in>>>traffic>>>downlink'
 ```
 
 **Success response (200):** `{"stat":{"name":"...","value":12345}}`  
-**Error (404):** Counter not found.
+**Error (404):** Counter not found.  
+**Error (400):** If `name` contains regex syntax (e.g. `(uplink|downlink)`), use `/api/stats/query` instead.
 
 ---
 
 ### Query counters by pattern
 
-Returns all counters whose names match the given substring pattern. Optionally resets matching counters after reading.
+Returns all counters whose names match the given pattern. Matching is **automatic**:
+
+- **Plain text** — substring search (same as `xray api statsquery`), e.g. `user>>>` or `inbound>>>new-in>>>traffic>>>`
+- **Regex** — when the pattern contains regex metacharacters (`(`, `|`, `[`, `*`, …), it is compiled as a Go regular expression
+
+Optionally resets matching counters after reading.
 
 | Method | Path             |
 |--------|------------------|
@@ -230,16 +244,64 @@ Returns all counters whose names match the given substring pattern. Optionally r
 
 | Query parameter | Type    | Description                    |
 |-----------------|---------|--------------------------------|
-| `pattern`       | string  | Substring to match in counter names. |
+| `pattern`       | string  | Substring or auto-detected regex. |
 | `reset`         | boolean | If `true` or `1`, reset matched counters after reading. |
+| `grouped`       | boolean | If `true`, return categorized traffic (see below). |
+| `group`         | string  | Optional with `grouped=true`: `inbound`, `outbound`, `user` (comma-separated). Default: inferred from `pattern`. |
 
-**Example:**
+**Examples:**
 
 ```bash
+# Substring: all user traffic counters (flat list)
 curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>'
+
+# Substring: both uplink and downlink for one inbound
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>new-in>>>traffic>>>'
+
+# Auto regex: uplink OR downlink for one inbound (parentheses trigger regex mode)
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>new-in>>>traffic>>>(uplink|downlink)'
 ```
 
 **Success response (200):** `{"stat":[{"name":"...","value":...}, ...]}`
+
+### Grouped output (`grouped=true`)
+
+Add `grouped=true` to get categorized traffic instead of a flat list. Which top-level groups appear depends on **`pattern`** (or explicit **`group`**):
+
+| Pattern example | Groups in response |
+|-----------------|-------------------|
+| `inbound>>>` | `inbound` only |
+| `outbound>>>` | `outbound` only |
+| `user>>>` | `user` (+ `online` when present) |
+| *(empty)* or generic regex | all non-empty groups |
+
+Override with `group=inbound,user` to force specific categories.
+
+```bash
+# Inbound traffic only (pattern implies inbound group)
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>&grouped=true'
+
+# One inbound, uplink+downlink, grouped
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>new-in>>>traffic>>>(uplink|downlink)&grouped=true'
+
+# User traffic grouped
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>&grouped=true'
+
+# Explicit groups (ignores pattern inference)
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=traffic>>>uplink&grouped=true&group=inbound,outbound'
+```
+
+**Grouped response (200):**
+
+```json
+{
+  "stats": {
+    "inbound": {
+      "vless-in": { "uplink": 1024, "downlink": 4096 }
+    }
+  }
+}
+```
 
 ---
 
@@ -417,6 +479,26 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/add' \
 
 ---
 
+### Edit inbounds
+
+Replaces existing inbounds by tag (runtime: remove + add; config file: upsert). Each `tag` must already exist.
+
+| Method | Path                |
+|--------|---------------------|
+| POST   | `/api/inbounds/edit` |
+
+**Request body:** Same as add — full inbound object(s) with existing `tag`.
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/inbounds/edit' \
+  -H 'Content-Type: application/json' \
+  -d '{"inbounds":[{"tag":"vless-in","protocol":"vless","listen":"0.0.0.0","port":443,"settings":{"clients":[],"decryption":"none"}}]}'
+```
+
+**Success response (200):** `{"status":"ok"}`
+
+---
+
 ### Remove inbounds
 
 Removes inbounds by tag.
@@ -447,7 +529,7 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/remove' \
 
 ### List inbounds
 
-Returns the list of configured inbounds. Can return only tags or full handler config (tag, receiver settings, proxy settings).
+Returns configured inbounds in **config.json format** (`protocol`, `listen`, `port`, `settings`, `streamSettings`, …). Runtime users (including API-added clients) are included in `settings.clients`. When a startup config file exists, `streamSettings` and `sniffing` are preserved from disk per inbound tag.
 
 | Method | Path                |
 |--------|---------------------|
@@ -465,7 +547,37 @@ curl 'http://127.0.0.1:8080/api/inbounds/list'
 curl 'http://127.0.0.1:8080/api/inbounds/list?tags_only=1'
 ```
 
-**Success response (200):** `{"inbounds":[{"tag":"..."}, ...]}` or full config objects when not using tags-only.
+**Success response (200):**
+
+```json
+{
+  "inbounds": [
+    {
+      "tag": "vless-in",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [{ "id": "uuid", "email": "user@example.com" }],
+        "decryption": "none"
+      },
+      "streamSettings": { "network": "tcp", "security": "reality" }
+    }
+  ]
+}
+```
+
+---
+
+### Auto-save config file
+
+After **inbound/outbound/user mutations** (add/remove inbounds, add/remove users, add/remove outbounds), the server **validates the request JSON**, merges it into the startup config file (same fields you sent — not a runtime export), validates the full config, and writes atomically.
+
+If validation or write fails, runtime changes still apply but the response is **500** with an error message — fix the config path or file permissions and retry.
+
+`GET /api/inbounds` and `GET /api/outbounds` return entries from the config file for handlers currently loaded at runtime (full JSON as stored, including `streamSettings`, `settings.clients`, etc.).
+
+Mutations that auto-save: `POST /api/inbounds/add`, `POST /api/inbounds/edit`, `POST /api/inbounds/remove`, `POST /api/inbounds/users/add`, `POST /api/inbounds/users/edit`, `POST /api/inbounds/users/remove`, `POST /api/outbounds/add`, `POST /api/outbounds/edit`, `POST /api/outbounds/remove`, `POST /api/rules/add`, `POST /api/rules/edit`, `POST /api/rules/remove`.
 
 ---
 
@@ -518,6 +630,26 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/add' \
 
 ---
 
+### Edit inbound users
+
+Updates existing users by email (runtime: remove + add; config: merge/replace client by email). Each client `email` must already exist on that inbound.
+
+| Method | Path                         |
+|--------|------------------------------|
+| POST   | `/api/inbounds/users/edit`   |
+
+**Request body:** Same shape as add — `inbounds[]` with `tag` and `settings.clients`.
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/edit' \
+  -H 'Content-Type: application/json' \
+  -d '{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"new-uuid","email":"user@example.com","flow":"xtls-rprx-vision"}]}}]}'
+```
+
+**Success response (200):** `{"updated_users":1}`
+
+---
+
 ### Remove users from an inbound
 
 Removes users from a single inbound by email.
@@ -548,7 +680,7 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/remove' \
   -d '{"tag":"vless-in","emails":["user@example.com"]}'
 ```
 
-**Success response (200):** `{"removed_users":1}`
+**Success response (200):** `{"removed_users":1,"dropped_connections":2}` — active TCP sessions for that user are closed immediately.
 
 ---
 
@@ -572,7 +704,21 @@ curl 'http://127.0.0.1:8080/api/inbounds/users?tag=vless-in'
 curl 'http://127.0.0.1:8080/api/inbounds/users?tag=vless-in&email=user@example.com'
 ```
 
-**Success response (200):** `{"users":[...]}` (array of user objects)
+**Success response (200):** clients in **config.json** format (same fields as `settings.clients`):
+
+```json
+{
+  "users": [
+    {
+      "id": "84d3e23c-04c5-40d6-a64a-b54ecb0e9e66",
+      "email": "service-test",
+      "flow": "xtls-rprx-vision"
+    }
+  ]
+}
+```
+
+For trojan: `password` + `email`. For shadowsocks: `method`, `password`, `email`.
 
 ---
 
@@ -634,6 +780,26 @@ curl -X POST 'http://127.0.0.1:8080/api/outbounds/add' \
 
 ---
 
+### Edit outbounds
+
+Replaces existing outbounds by tag (runtime: remove + add; config file: upsert).
+
+| Method | Path                  |
+|--------|-----------------------|
+| POST   | `/api/outbounds/edit` |
+
+**Request body:** Same as add — full outbound object(s) with existing `tag`.
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/outbounds/edit' \
+  -H 'Content-Type: application/json' \
+  -d '{"outbounds":[{"tag":"proxy","protocol":"freedom","settings":{}}]}'
+```
+
+**Success response (200):** `{"status":"ok"}`
+
+---
+
 ### Remove outbounds
 
 Removes outbounds by tag.
@@ -676,11 +842,17 @@ curl 'http://127.0.0.1:8080/api/outbounds/list'
 
 ### Add rules
 
-Adds routing rules. Uses the same `routing.rules` structure as in Xray config. `should_append` controls whether to append to or replace existing rules (behavior depends on router implementation).
+Adds routing rules. Uses the same `routing.rules` structure as in Xray config.
 
 | Method | Path              |
 |--------|-------------------|
 | POST   | `/api/rules/add`   |
+
+**Query parameters:**
+
+| Name            | Type    | Required | Description                                                                 |
+|-----------------|---------|----------|-----------------------------------------------------------------------------|
+| `should_append` | boolean | No       | If `true` or `1`, append rules to the runtime router. Default: `false`.     |
 
 **Request body:**
 
@@ -695,17 +867,60 @@ Adds routing rules. Uses the same `routing.rules` structure as in Xray config. `
         "domain": ["geosite:category-ads"]
       }
     ]
-  },
-  "should_append": false
+  }
 }
 ```
 
 **Example:**
 
 ```bash
-curl -X POST 'http://127.0.0.1:8080/api/rules/add' \
+curl -X POST 'http://127.0.0.1:8080/api/rules/add?should_append=true' \
   -H 'Content-Type: application/json' \
-  -d '{"routing":{"rules":[{"type":"field","ruleTag":"r1","outboundTag":"direct","domain":["geosite:google"]}]},"should_append":true}'
+  -d '{"routing":{"rules":[{"type":"field","ruleTag":"r1","outboundTag":"direct","domain":["geosite:google"]}]}}'
+```
+
+**Success response (200):** `{"status":"ok"}`
+
+---
+
+### Edit rules
+
+Replaces one routing rule by `rule_tag` (runtime: remove + add at end; config file: replace rule with matching `ruleTag`).
+
+| Method | Path               |
+|--------|--------------------|
+| POST   | `/api/rules/edit`  |
+
+**Request body:**
+
+```json
+{
+  "rule_tag": "my-rule",
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "ruleTag": "my-rule",
+        "outboundTag": "direct",
+        "domain": ["geosite:cn"]
+      }
+    ]
+  }
+}
+```
+
+Alternatively use `"rule": { ... }` for a single rule object (without wrapping `routing`).
+
+| Field       | Required | Description                                      |
+|-------------|----------|--------------------------------------------------|
+| `rule_tag`  | Yes      | Existing rule tag to replace (`ruleTags[0]` also accepted). |
+| `routing`   | One of   | Routing block with exactly one rule.             |
+| `rule`      | One of   | Single rule object.                              |
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/rules/edit' \
+  -H 'Content-Type: application/json' \
+  -d '{"rule_tag":"my-rule","rule":{"type":"field","ruleTag":"my-rule","outboundTag":"direct","domain":["geosite:cn"]}}'
 ```
 
 **Success response (200):** `{"status":"ok"}`
@@ -720,7 +935,7 @@ Removes routing rules by rule tag.
 |--------|---------------------|
 | POST   | `/api/rules/remove`  |
 
-**Request body:**
+**Request body** (any of the tag fields work):
 
 ```json
 {
@@ -728,7 +943,7 @@ Removes routing rules by rule tag.
 }
 ```
 
-**Success response (200):** `{"status":"ok"}`
+**Success response (200):** `{"removed": 1}` — optional `warnings` when some tags failed.
 
 ---
 
@@ -875,29 +1090,34 @@ Adds or updates a routing rule that blocks traffic from specified source IPs (op
 |--------|------|-------------|
 | POST | `/api/logger/restart` | Restart logger |
 | GET | `/api/stats` | Get single counter |
-| GET | `/api/stats/query` | Query counters by pattern |
+| GET | `/api/stats/query` | Query counters by pattern (optional grouped) |
 | GET | `/api/stats/sys` | System/runtime stats |
 | GET | `/api/stats/online` | Online count for one user |
 | GET | `/api/stats/online/iplist` | Online IP list for one user |
 | GET | `/api/stats/online/users` | All online users |
 | GET | `/api/stats/online/all` | All online users with their IPs (async) |
 | POST | `/api/inbounds/add` | Add inbounds |
+| POST | `/api/inbounds/edit` | Edit inbounds |
 | POST | `/api/inbounds/remove` | Remove inbounds |
 | GET | `/api/inbounds/list` | List inbounds |
 | POST | `/api/inbounds/users/add` | Add users to inbounds |
+| POST | `/api/inbounds/users/edit` | Edit users on inbounds |
 | POST | `/api/inbounds/users/remove` | Remove users from inbound |
 | GET | `/api/inbounds/users` | Get user(s) of an inbound |
 | GET | `/api/inbounds/users/count` | Get user count of an inbound |
 | POST | `/api/outbounds/add` | Add outbounds |
+| POST | `/api/outbounds/edit` | Edit outbounds |
 | POST | `/api/outbounds/remove` | Remove outbounds |
 | GET | `/api/outbounds/list` | List outbounds |
 | POST | `/api/rules/add` | Add routing rules |
+| POST | `/api/rules/edit` | Edit routing rule by tag |
 | POST | `/api/rules/remove` | Remove routing rules |
 | GET | `/api/rules/list` | List routing rules |
 | GET | `/api/balancer/info` | Get balancer info |
 | POST | `/api/balancer/override` | Override balancer target |
 | POST | `/api/sourceip/block` | Block by source IP(s) |
 | POST | `/api/config/import` | Import provided config JSON file into a config path |
+| GET | `/docs` | Interactive API documentation and endpoint tester |
 
 ---
 
@@ -905,9 +1125,7 @@ Adds or updates a routing rule that blocks traffic from specified source IPs (op
 
 ### Import config.json file
 
-Writes a full Xray configuration JSON document (sent as a file) to disk. This endpoint is intended for panels and tools that generate `config.json` themselves and want to save it to a specific path via the API.
-
-> Note: This endpoint **does not** read the current in‑memory runtime state from the core; it only writes the file you send.
+Writes a full Xray configuration JSON document (sent as a file) to disk, then **applies it to the running instance** without restart (inbounds, outbounds, routing).
 
 | Method | Path                |
 |--------|---------------------|
@@ -915,8 +1133,30 @@ Writes a full Xray configuration JSON document (sent as a file) to disk. This en
 
 **Preferred request (multipart/form-data):**
 
-- `file`: `config.json` file (required)
-- `path`: target path on disk (optional; if empty, uses the first config file Xray was started with)
+| Field   | Required | Description |
+|---------|----------|-------------|
+| `file`  | Yes      | `config.json` file |
+| `path`  | No       | Target path on disk (default: startup config path) |
+| `apply` | No       | `true` (default) hot-reload runtime; `false` write file only |
+
+**Runtime apply (default):** syncs inbounds, outbounds, and routing rules from the uploaded config. Does **not** hot-reload: log, DNS, policy, transport, API listen addresses.
+
+**Success response (200):**
+
+```json
+{
+  "status": "ok",
+  "path": "/etc/xray/config.json",
+  "applied": {
+    "inbounds": { "added": 1, "removed": 0, "updated": 2 },
+    "outbounds": { "added": 0, "removed": 1, "updated": 0 },
+    "routing": true,
+    "skipped": ["log (...)", "dns", "policy", "transport", "api/metrics/httpapi listen address"]
+  }
+}
+```
+
+> Note: This endpoint does not export the current in-memory state; it only accepts the file you send.
 
 #### Examples
 
@@ -925,7 +1165,8 @@ Writes a full Xray configuration JSON document (sent as a file) to disk. This en
   ```bash
   api POST /api/config/import \
     -F 'file=@/path/to/config.json' \
-    -F 'path=/etc/xray/config.json'
+    -F 'path=/etc/xray/config.json' \
+    -F 'apply=true'
   ```
 
 - **PHP (with `XrayAPI` class):**

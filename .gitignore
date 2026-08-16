@@ -13,6 +13,12 @@
 
 # macOS specific files
 .DS_Store
+xray
+xray.exe
+config.json
+error.log
+access.log
+local/
 
 # IDE/editor specific files
 .idea/

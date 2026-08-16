@@ -3,35 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>(function(){var s=localStorage.getItem('xray_docs_theme');var l=window.matchMedia('(prefers-color-scheme: light)').matches;document.documentElement.setAttribute('data-theme',s||(l?'light':'dark'));})();</script>
   <title>Xray HTTP API Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --bg: #0f1117;
-      --surface: #161b22;
-      --surface2: #1c2128;
-      --border: #30363d;
-      --text: #e6edf3;
-      --muted: #8b949e;
-      --accent: #58a6ff;
-      --accent-dim: #1f3a5f;
-      --green: #3fb950;
-      --orange: #d29922;
-      --red: #f85149;
-      --purple: #bc8cff;
-      --radius: 8px;
+    :root, [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #080c12;
+      --bg-accent: radial-gradient(ellipse 100% 60% at 50% -10%, rgba(56,132,255,.12), transparent 50%);
+      --surface: #121a24;
+      --surface2: #182230;
+      --border: #2a384c;
+      --text: #edf2f8;
+      --muted: #8fa3bc;
+      --accent: #5b9dff;
+      --accent-dim: rgba(91,157,255,.12);
+      --green: #34d399;
+      --orange: #f59e0b;
+      --red: #f87171;
+      --purple: #c4b5fd;
+      --code-bg: #080c12;
+      --code-fg: #b8c9de;
+      --shadow: 0 4px 24px rgba(0,0,0,.25);
+      --radius: 10px;
       --sidebar-w: 280px;
-      --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
-      --mono: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      --input-bg: #080c12;
+      --hover-bg: rgba(255,255,255,.04);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6fb;
+      --bg-accent: radial-gradient(ellipse 100% 60% at 50% -10%, rgba(37,99,235,.1), transparent 50%);
+      --surface: #ffffff;
+      --surface2: #f8fafc;
+      --border: #d8e2ef;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-dim: rgba(37,99,235,.08);
+      --green: #059669;
+      --orange: #d97706;
+      --red: #dc2626;
+      --purple: #7c3aed;
+      --code-bg: #f8fafc;
+      --code-fg: #1e293b;
+      --shadow: 0 4px 24px rgba(15,23,42,.06);
+      --input-bg: #ffffff;
+      --hover-bg: rgba(15,23,42,.04);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { scroll-behavior: smooth; }
     body {
       font-family: var(--font);
       background: var(--bg);
+      background-image: var(--bg-accent);
       color: var(--text);
       line-height: 1.6;
       display: flex;
       min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      transition: background-color .25s, color .25s;
     }
     /* Sidebar */
     .sidebar {
@@ -49,31 +84,56 @@
       padding: 0 1.25rem 1rem;
       border-bottom: 1px solid var(--border);
       margin-bottom: 1rem;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
     }
     .sidebar-brand h1 {
-      font-size: 1.1rem;
-      font-weight: 600;
-      color: var(--accent);
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: -.02em;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
     .sidebar-brand p {
-      font-size: 0.75rem;
+      font-size: 0.72rem;
       color: var(--muted);
       margin-top: 0.25rem;
+      font-weight: 500;
     }
+    .theme-btn {
+      width: 36px; height: 36px; flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--surface2);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 1rem;
+      transition: border-color .15s, color .15s;
+    }
+    .theme-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .theme-btn .icon-sun, .theme-btn .icon-moon { display: none; }
+    [data-theme="dark"] .theme-btn .icon-sun { display: inline; }
+    [data-theme="light"] .theme-btn .icon-moon { display: inline; }
     .search-box {
       padding: 0 1rem 1rem;
     }
     .search-box input {
       width: 100%;
-      padding: 0.5rem 0.75rem;
-      background: var(--bg);
+      padding: 0.55rem 0.8rem;
+      background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       color: var(--text);
       font-size: 0.85rem;
+      font-family: var(--font);
       outline: none;
+      transition: border-color .15s, box-shadow .15s;
     }
-    .search-box input:focus { border-color: var(--accent); }
+    .search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
     .nav-group { margin-bottom: 0.5rem; }
     .nav-group-title {
       padding: 0.35rem 1.25rem;
@@ -92,7 +152,7 @@
       border-left: 2px solid transparent;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
     }
-    .nav-link:hover { color: var(--text); background: var(--surface2); }
+    .nav-link:hover { color: var(--text); background: var(--hover-bg); }
     .nav-link.active { color: var(--accent); border-left-color: var(--accent); }
     /* Main */
     .main {
@@ -107,8 +167,9 @@
       border-bottom: 1px solid var(--border);
     }
     .hero h2 {
-      font-size: 2rem;
-      font-weight: 700;
+      font-size: clamp(1.75rem, 4vw, 2.25rem);
+      font-weight: 800;
+      letter-spacing: -.03em;
       margin-bottom: 0.5rem;
     }
     .hero p { color: var(--muted); max-width: 600px; }
@@ -143,6 +204,7 @@
       border-radius: var(--radius);
       margin-bottom: 1.25rem;
       overflow: hidden;
+      box-shadow: var(--shadow);
     }
     .endpoint-header {
       display: flex;
@@ -161,8 +223,9 @@
       border-radius: 4px;
       letter-spacing: 0.03em;
     }
-    .method-get { background: #1a3a2a; color: var(--green); }
-    .method-post { background: #3a2a1a; color: var(--orange); }
+    .method-get { background: var(--accent-dim); color: var(--green); }
+    .method-post { background: rgba(245,158,11,.12); color: var(--orange); }
+    [data-theme="light"] .method-post { background: rgba(217,119,6,.1); }
     .endpoint-path {
       font-family: var(--mono);
       font-size: 0.88rem;
@@ -211,13 +274,13 @@
     .tab-panel.active { display: block; }
     pre {
       margin: 0;
-      padding: 1rem;
-      background: var(--bg);
+      padding: 1rem 1.1rem;
+      background: var(--code-bg);
       font-family: var(--mono);
       font-size: 0.78rem;
-      line-height: 1.55;
+      line-height: 1.6;
       overflow-x: auto;
-      color: #c9d1d9;
+      color: var(--code-fg);
       position: relative;
     }
     .copy-btn {
@@ -268,8 +331,13 @@
 
 <aside class="sidebar">
   <div class="sidebar-brand">
-    <h1>Xray HTTP API</h1>
-    <p>REST/JSON runtime control</p>
+    <div>
+      <h1>Xray HTTP API</h1>
+      <p>REST/JSON runtime control</p>
+    </div>
+    <button class="theme-btn" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle theme">
+      <span class="icon-sun">☀</span><span class="icon-moon">☽</span>
+    </button>
   </div>
   <div class="search-box">
     <input type="search" id="search" placeholder="Search endpoints…" autocomplete="off">
@@ -299,9 +367,11 @@
     <div class="nav-group">
       <div class="nav-group-title">Inbounds</div>
       <a class="nav-link" href="#inbounds-add">Add</a>
+      <a class="nav-link" href="#inbounds-edit">Edit</a>
       <a class="nav-link" href="#inbounds-remove">Remove</a>
       <a class="nav-link" href="#inbounds-list">List</a>
       <a class="nav-link" href="#users-add">Add users</a>
+      <a class="nav-link" href="#users-edit">Edit users</a>
       <a class="nav-link" href="#users-remove">Remove users</a>
       <a class="nav-link" href="#users-get">Get users</a>
       <a class="nav-link" href="#users-count">User count</a>
@@ -309,12 +379,14 @@
     <div class="nav-group">
       <div class="nav-group-title">Outbounds</div>
       <a class="nav-link" href="#outbounds-add">Add</a>
+      <a class="nav-link" href="#outbounds-edit">Edit</a>
       <a class="nav-link" href="#outbounds-remove">Remove</a>
       <a class="nav-link" href="#outbounds-list">List</a>
     </div>
     <div class="nav-group">
       <div class="nav-group-title">Routing</div>
       <a class="nav-link" href="#rules-add">Add rules</a>
+      <a class="nav-link" href="#rules-edit">Edit rule</a>
       <a class="nav-link" href="#rules-remove">Remove rules</a>
       <a class="nav-link" href="#rules-list">List rules</a>
       <a class="nav-link" href="#balancer-info">Balancer info</a>
@@ -331,7 +403,7 @@
 <main class="main">
   <div class="hero">
     <h2>HTTP API Reference</h2>
-    <p>Control and inspect a running Xray instance via REST/JSON. Same capabilities as <code>xray api</code> CLI — for panels, automation, and integrations.</p>
+    <p>کنترل و مانیتورینگ Xray از طریق REST/JSON — همان قابلیت‌های CLI با امکان تست زنده در <a href="/docs/" style="color:var(--accent)">/docs</a>.</p>
   </div>
 
   <!-- Configuration -->
@@ -459,14 +531,16 @@ $res  = $xray->post('/api/logger/restart');</pre></div>
         <span class="method method-get">GET</span>
         <span class="endpoint-path">/api/stats/query</span>
       </div>
-      <p class="endpoint-desc">Query counters matching a substring pattern.</p>
+      <p class="endpoint-desc">Query counters by substring or auto-regex <code>pattern</code>. Use <code>grouped=true</code> for categorized output; groups are inferred from pattern (<code>inbound&gt;&gt;&gt;</code>, <code>user&gt;&gt;&gt;</code>, …) or set explicitly with <code>group=inbound,user</code>.</p>
       <div class="tabs" data-tabs>
         <button class="tab-btn active" data-tab="curl">curl</button>
         <button class="tab-btn" data-tab="response">Response</button>
       </div>
-      <div class="tab-panel active" data-panel="curl"><pre>curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>'</pre></div>
-      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span>
-{"stat":[{"name":"user>>>...","value":100}]}</pre></div>
+      <div class="tab-panel active" data-panel="curl"><pre>curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>'
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>&grouped=true'
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>new-in>>>traffic>>>(uplink|downlink)&grouped=true'</pre></div>
+      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> flat: {"stat":[{"name":"...","value":100}]}
+grouped: {"stats":{"inbound":{"vless-in":{"uplink":1024,"downlink":4096}}}}</pre></div>
     </div>
 
     <div class="endpoint" id="stats-sys" data-search="stats sys system runtime memory">
@@ -573,6 +647,20 @@ curl 'http://127.0.0.1:8080/api/stats/online/all?email=u1@x.com&email=u2@x.com'<
       <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
     </div>
 
+    <div class="endpoint" id="inbounds-edit" data-search="inbounds edit replace">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/api/inbounds/edit</span>
+      </div>
+      <p class="endpoint-desc">Replace existing inbound(s) by tag (runtime remove+add, config upsert). Tag must already exist.</p>
+      <div class="tabs" data-tabs>
+        <button class="tab-btn active" data-tab="request">Request</button>
+        <button class="tab-btn" data-tab="response">Response</button>
+      </div>
+      <div class="tab-panel active" data-panel="request"><pre>{"inbounds":[{"tag":"vless-in","protocol":"vless","listen":"0.0.0.0","port":443,"settings":{"clients":[],"decryption":"none"}}]}</pre></div>
+      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
+    </div>
+
     <div class="endpoint" id="inbounds-remove" data-search="inbounds remove tags">
       <div class="endpoint-header">
         <span class="method method-post">POST</span>
@@ -618,6 +706,20 @@ curl 'http://127.0.0.1:8080/api/inbounds/list?tags_only=1'</pre></div>
       </div>
       <div class="tab-panel active" data-panel="request"><pre>{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"uuid","email":"user@example.com"}]}}]}</pre></div>
       <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"added_users":1}</pre></div>
+    </div>
+
+    <div class="endpoint" id="users-edit" data-search="users edit update clients">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/api/inbounds/users/edit</span>
+      </div>
+      <p class="endpoint-desc">Update existing users by email. Same body shape as add; emails must already exist.</p>
+      <div class="tabs" data-tabs>
+        <button class="tab-btn active" data-tab="request">Request</button>
+        <button class="tab-btn" data-tab="response">Response</button>
+      </div>
+      <div class="tab-panel active" data-panel="request"><pre>{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"new-uuid","email":"user@example.com","flow":"xtls-rprx-vision"}]}}]}</pre></div>
+      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"updated_users":1}</pre></div>
     </div>
 
     <div class="endpoint" id="users-remove" data-search="users remove emails">
@@ -679,6 +781,20 @@ curl 'http://127.0.0.1:8080/api/inbounds/users?tag=vless-in&email=user@example.c
       <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
     </div>
 
+    <div class="endpoint" id="outbounds-edit" data-search="outbounds edit replace">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/api/outbounds/edit</span>
+      </div>
+      <p class="endpoint-desc">Replace existing outbound(s) by tag. Tag must already exist.</p>
+      <div class="tabs" data-tabs>
+        <button class="tab-btn active" data-tab="request">Request</button>
+        <button class="tab-btn" data-tab="response">Response</button>
+      </div>
+      <div class="tab-panel active" data-panel="request"><pre>{"outbounds":[{"tag":"proxy","protocol":"freedom","settings":{}}]}</pre></div>
+      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
+    </div>
+
     <div class="endpoint" id="outbounds-remove" data-search="outbounds remove">
       <div class="endpoint-header">
         <span class="method method-post">POST</span>
@@ -715,12 +831,28 @@ curl 'http://127.0.0.1:8080/api/inbounds/users?tag=vless-in&email=user@example.c
         <span class="method method-post">POST</span>
         <span class="endpoint-path">/api/rules/add</span>
       </div>
-      <p class="endpoint-desc">Add routing rules. Optional <code>should_append</code> (runtime only).</p>
+      <p class="endpoint-desc">Add routing rules. Query: <code>should_append=true</code> to append (default false).</p>
       <div class="tabs" data-tabs>
         <button class="tab-btn active" data-tab="request">Request</button>
         <button class="tab-btn" data-tab="response">Response</button>
       </div>
-      <div class="tab-panel active" data-panel="request"><pre>{"rules":[{"type":"field","outboundTag":"direct","domain":["geosite:cn"]}],"should_append":true}</pre></div>
+      <div class="tab-panel active" data-panel="request"><pre>POST /api/rules/add?should_append=true
+
+{"routing":{"rules":[{"type":"field","outboundTag":"direct","domain":["geosite:cn"]}]}}</pre></div>
+      <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
+    </div>
+
+    <div class="endpoint" id="rules-edit" data-search="rules edit rule_tag">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="endpoint-path">/api/rules/edit</span>
+      </div>
+      <p class="endpoint-desc">Replace one rule by <code>rule_tag</code>. Provide <code>routing.rules</code> (one rule) or a single <code>rule</code> object.</p>
+      <div class="tabs" data-tabs>
+        <button class="tab-btn active" data-tab="request">Request</button>
+        <button class="tab-btn" data-tab="response">Response</button>
+      </div>
+      <div class="tab-panel active" data-panel="request"><pre>{"rule_tag":"my-rule","rule":{"type":"field","ruleTag":"my-rule","outboundTag":"direct","domain":["geosite:cn"]}}</pre></div>
       <div class="tab-panel" data-panel="response"><pre><span class="badge-ok">200 OK</span> {"status":"ok"}</pre></div>
     </div>
 
@@ -837,23 +969,27 @@ $res = $xray->post('/api/config/import', $fields);</pre></div>
       <tbody>
         <tr><td>POST</td><td><a href="#logger-restart">/api/logger/restart</a></td><td>Restart logger</td></tr>
         <tr><td>GET</td><td><a href="#stats">/api/stats</a></td><td>Get single counter</td></tr>
-        <tr><td>GET</td><td><a href="#stats-query">/api/stats/query</a></td><td>Query counters</td></tr>
+        <tr><td>GET</td><td><a href="#stats-query">/api/stats/query</a></td><td>Query counters (optional grouped)</td></tr>
         <tr><td>GET</td><td><a href="#stats-sys">/api/stats/sys</a></td><td>System stats</td></tr>
         <tr><td>GET</td><td><a href="#stats-online">/api/stats/online</a></td><td>Online count</td></tr>
         <tr><td>GET</td><td><a href="#stats-iplist">/api/stats/online/iplist</a></td><td>Online IPs</td></tr>
         <tr><td>GET</td><td><a href="#stats-users">/api/stats/online/users</a></td><td>Online users</td></tr>
         <tr><td>GET</td><td><a href="#stats-all">/api/stats/online/all</a></td><td>Online all + IPs</td></tr>
         <tr><td>POST</td><td><a href="#inbounds-add">/api/inbounds/add</a></td><td>Add inbounds</td></tr>
+        <tr><td>POST</td><td><a href="#inbounds-edit">/api/inbounds/edit</a></td><td>Edit inbounds</td></tr>
         <tr><td>POST</td><td><a href="#inbounds-remove">/api/inbounds/remove</a></td><td>Remove inbounds</td></tr>
         <tr><td>GET</td><td><a href="#inbounds-list">/api/inbounds/list</a></td><td>List inbounds</td></tr>
         <tr><td>POST</td><td><a href="#users-add">/api/inbounds/users/add</a></td><td>Add users</td></tr>
+        <tr><td>POST</td><td><a href="#users-edit">/api/inbounds/users/edit</a></td><td>Edit users</td></tr>
         <tr><td>POST</td><td><a href="#users-remove">/api/inbounds/users/remove</a></td><td>Remove users</td></tr>
         <tr><td>GET</td><td><a href="#users-get">/api/inbounds/users</a></td><td>Get users</td></tr>
         <tr><td>GET</td><td><a href="#users-count">/api/inbounds/users/count</a></td><td>User count</td></tr>
         <tr><td>POST</td><td><a href="#outbounds-add">/api/outbounds/add</a></td><td>Add outbounds</td></tr>
+        <tr><td>POST</td><td><a href="#outbounds-edit">/api/outbounds/edit</a></td><td>Edit outbounds</td></tr>
         <tr><td>POST</td><td><a href="#outbounds-remove">/api/outbounds/remove</a></td><td>Remove outbounds</td></tr>
         <tr><td>GET</td><td><a href="#outbounds-list">/api/outbounds/list</a></td><td>List outbounds</td></tr>
         <tr><td>POST</td><td><a href="#rules-add">/api/rules/add</a></td><td>Add rules</td></tr>
+        <tr><td>POST</td><td><a href="#rules-edit">/api/rules/edit</a></td><td>Edit rule</td></tr>
         <tr><td>POST</td><td><a href="#rules-remove">/api/rules/remove</a></td><td>Remove rules</td></tr>
         <tr><td>GET</td><td><a href="#rules-list">/api/rules/list</a></td><td>List rules</td></tr>
         <tr><td>GET</td><td><a href="#balancer-info">/api/balancer/info</a></td><td>Balancer info</td></tr>
@@ -867,6 +1003,18 @@ $res = $xray->post('/api/config/import', $fields);</pre></div>
 </main>
 
 <script>
+  (function initTheme() {
+    const stored = localStorage.getItem('xray_docs_theme');
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+    document.documentElement.setAttribute('data-theme', stored || (prefersLight ? 'light' : 'dark'));
+    document.getElementById('themeBtn')?.addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+      const next = cur === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('xray_docs_theme', next);
+    });
+  })();
+
   // Tabs
   document.querySelectorAll('[data-tabs]').forEach(tabs => {
     const card = tabs.closest('.endpoint');

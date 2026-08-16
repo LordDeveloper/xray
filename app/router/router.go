@@ -213,19 +213,40 @@ func (r *Router) RemoveRule(tag string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	newRules := []*Rule{}
-	if tag != "" {
-		for _, rule := range r.rules {
-			if rule.RuleTag != tag {
-				newRules = append(newRules, rule)
-			} else if rule.Webhook != nil {
+	if tag == "" {
+		return errors.New("empty tag name!")
+	}
+	found := false
+	newRules := make([]*Rule, 0, len(r.rules))
+	for _, rule := range r.rules {
+		if rule.RuleTag == tag {
+			found = true
+			if rule.Webhook != nil {
 				rule.Webhook.Close()
 			}
+			continue
 		}
-		r.rules = newRules
-		return nil
+		newRules = append(newRules, rule)
 	}
-	return errors.New("empty tag name!")
+	if !found {
+		return errors.New("rule tag not found: ", tag)
+	}
+	r.rules = newRules
+	return nil
+}
+
+// RemoveRuleAt removes a rule by its runtime index (0-based).
+func (r *Router) RemoveRuleAt(index int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if index < 0 || index >= len(r.rules) {
+		return errors.New("rule index out of range")
+	}
+	if r.rules[index].Webhook != nil {
+		r.rules[index].Webhook.Close()
+	}
+	r.rules = append(r.rules[:index], r.rules[index+1:]...)
+	return nil
 }
 
 // ListRule implements routing.Router

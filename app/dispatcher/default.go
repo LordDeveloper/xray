@@ -13,6 +13,7 @@ import (
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/session"
+	"github.com/xtls/xray-core/common/userconn"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/dns"
 	"github.com/xtls/xray-core/features/outbound"
@@ -182,6 +183,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 		if p.Stats.UserOnline {
 			trackOnlineIP(ctx, d.stats, user.Email, sessionInbound.Source.Address.String())
 		}
+		trackUserSession(ctx, sessionInbound, user.Email)
 	}
 
 	return inboundLink, outboundLink
@@ -216,9 +218,17 @@ func WrapLink(ctx context.Context, policyManager policy.Manager, statsManager st
 		if p.Stats.UserOnline {
 			trackOnlineIP(ctx, statsManager, user.Email, sessionInbound.Source.Address.String())
 		}
+		trackUserSession(ctx, sessionInbound, user.Email)
 	}
 
 	return link
+}
+
+func trackUserSession(ctx context.Context, inbound *session.Inbound, email string) {
+	if inbound == nil || email == "" || inbound.Conn == nil {
+		return
+	}
+	userconn.Track(ctx, inbound.Tag, email, inbound.Conn)
 }
 
 func trackOnlineIP(ctx context.Context, sm stats.Manager, email, ip string) {

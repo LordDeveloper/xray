@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>(function(){var s=localStorage.getItem('xray_docs_theme');var l=window.matchMedia('(prefers-color-scheme: light)').matches;document.documentElement.setAttribute('data-theme',s||(l?'light':'dark'));})();</script>
+  <title>Xray HTTP API — Docs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #080c12;
+      --bg2: #0c1119;
+      --bg-accent: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(56, 132, 255, .14), transparent 55%);
+      --surface: #121a24;
+      --surface2: #182230;
+      --surface3: #1f2b3c;
+      --border: #2a384c;
+      --border-soft: rgba(255,255,255,.06);
+      --text: #edf2f8;
+      --text-soft: #c8d4e4;
+      --muted: #8fa3bc;
+      --accent: #5b9dff;
+      --accent-2: #7c5cff;
+      --accent-glow: rgba(91, 157, 255, .14);
+      --accent-gradient: linear-gradient(135deg, #5b9dff 0%, #7c5cff 100%);
+      --green: #34d399;
+      --green-bg: rgba(52, 211, 153, .14);
+      --orange: #f59e0b;
+      --orange-bg: rgba(245, 158, 11, .14);
+      --red: #f87171;
+      --purple: #c4b5fd;
+      --code-fg: #b8c9de;
+      --shadow: 0 8px 32px rgba(0,0,0,.35);
+      --header-bg: rgba(12, 17, 25, .85);
+      --sidebar-bg: linear-gradient(180deg, #0e141d 0%, #121a24 45%, #0c1119 100%);
+      --hover-bg: rgba(255,255,255,.04);
+      --active-bg: linear-gradient(90deg, rgba(91,157,255,.12), transparent 85%);
+      --input-bg: #080c12;
+      --radius: 12px;
+      --font: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+      --sidebar-w: 300px;
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #f3f6fb;
+      --bg2: #e9eef6;
+      --bg-accent: radial-gradient(ellipse 120% 80% at 50% -20%, rgba(59, 130, 246, .12), transparent 55%);
+      --surface: #ffffff;
+      --surface2: #f8fafc;
+      --surface3: #f1f5f9;
+      --border: #d8e2ef;
+      --border-soft: rgba(15,23,42,.06);
+      --text: #0f172a;
+      --text-soft: #334155;
+      --muted: #64748b;
+      --accent: #2563eb;
+      --accent-2: #7c3aed;
+      --accent-glow: rgba(37, 99, 235, .1);
+      --accent-gradient: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+      --green: #059669;
+      --green-bg: rgba(5, 150, 105, .1);
+      --orange: #d97706;
+      --orange-bg: rgba(217, 119, 6, .1);
+      --red: #dc2626;
+      --purple: #7c3aed;
+      --code-fg: #1e293b;
+      --shadow: 0 8px 32px rgba(15,23,42,.08);
+      --header-bg: rgba(255,255,255,.88);
+      --sidebar-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 50%, #f3f6fb 100%);
+      --hover-bg: rgba(15,23,42,.04);
+      --active-bg: linear-gradient(90deg, rgba(37,99,235,.1), transparent 85%);
+      --input-bg: #ffffff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      background-image: var(--bg-accent);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      transition: background-color .25s, color .25s;
+    }
+    header {
+      padding: 0.7rem 1.25rem;
+      background: var(--header-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-shrink: 0;
+      z-index: 10;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: var(--accent-gradient);
+      border-radius: 10px;
+      display: grid; place-items: center;
+      font-size: 0.72rem; font-weight: 800; color: #fff;
+      letter-spacing: -.02em;
+      box-shadow: 0 4px 14px rgba(91,157,255,.35);
+    }
+    [data-theme="light"] .logo-icon { box-shadow: 0 4px 14px rgba(37,99,235,.25); }
+    .logo h1 { font-size: 1rem; font-weight: 700; letter-spacing: -.02em; }
+    .logo span { font-size: 0.72rem; color: var(--muted); display: block; font-weight: 500; }
+    .header-actions {
+      display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;
+    }
+    .theme-btn {
+      width: 38px; height: 38px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      display: grid; place-items: center;
+      font-size: 1.05rem;
+      transition: border-color .15s, color .15s, transform .12s, background .15s;
+    }
+    .theme-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+    .theme-btn:active { transform: scale(.96); }
+    .theme-btn .icon-sun, .theme-btn .icon-moon { display: none; }
+    [data-theme="dark"] .theme-btn .icon-sun { display: block; }
+    [data-theme="light"] .theme-btn .icon-moon { display: block; }
+    .auth-bar {
+      display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; flex: 1; justify-content: flex-end;
+    }
+    .field-inline { display: flex; flex-direction: column; gap: 0.15rem; }
+    .field-inline label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    .field-inline input {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.45rem 0.65rem;
+      font-size: 0.8rem;
+      font-family: var(--font);
+      min-width: 110px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .field-inline input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .field-inline input.wide { min-width: 220px; }
+    .layout { display: flex; flex: 1; min-height: 0; }
+    .sidebar {
+      width: var(--sidebar-w);
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .sidebar-head {
+      padding: 1rem 1rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .sidebar-head h2 {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+    }
+    .sidebar-search {
+      width: 100%;
+      padding: 0.6rem 0.8rem 0.6rem 2.25rem;
+      background: var(--input-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='%238fa3bc' viewBox='0 0 16 16'%3E%3Cpath d='M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85zm-5.242 1.156a5 5 0 1 1 0-10 5 5 0 0 1 0 10z'/%3E%3C/svg%3E") 0.75rem center no-repeat;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 0.82rem;
+      font-family: var(--font);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .sidebar-search:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .ep-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 0.5rem 0.65rem 1rem;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .ep-list::-webkit-scrollbar { width: 5px; }
+    .ep-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .cat-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      padding: 0.75rem 0.65rem 0.35rem;
+      opacity: .9;
+    }
+    .cat-label:first-child { padding-top: 0.35rem; }
+    .ep-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 2px;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background .12s, border-color .12s, transform .1s;
+    }
+    .ep-item:hover {
+      background: var(--hover-bg);
+      border-color: var(--border);
+    }
+    .ep-item.active {
+      background: var(--active-bg);
+      border-color: rgba(91,157,255,.35);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+    .ep-item-body { min-width: 0; flex: 1; }
+    .ep-item-title {
+      font-size: 0.81rem;
+      font-weight: 600;
+      color: var(--text-soft);
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ep-item.active .ep-item-title { color: var(--accent); }
+    .ep-item-path {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      opacity: .85;
+    }
+    .badge-method {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      font-weight: 700;
+      padding: 0.22rem 0.38rem;
+      border-radius: 5px;
+      flex-shrink: 0;
+      min-width: 2.5rem;
+      text-align: center;
+      margin-top: 0.1rem;
+      letter-spacing: .02em;
+    }
+    .badge-method.GET { background: var(--green-bg); color: var(--green); }
+    .badge-method.POST { background: var(--orange-bg); color: var(--orange); }
+    .main { flex: 1; overflow-y: auto; background: transparent; }
+    .welcome {
+      max-width: 820px;
+      margin: 2.5rem auto 3rem;
+      padding: 0 1.75rem;
+    }
+    .welcome-hero {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .welcome-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      background: var(--accent-glow);
+      border: 1px solid var(--border-soft);
+      color: var(--accent);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .welcome h2 {
+      font-size: clamp(1.6rem, 4vw, 2.1rem);
+      font-weight: 800;
+      letter-spacing: -.03em;
+      margin-bottom: 0.65rem;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .welcome > .welcome-hero > p {
+      color: var(--muted);
+      line-height: 1.75;
+      font-size: 0.95rem;
+      max-width: 560px;
+      margin: 0 auto;
+    }
+    .welcome-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.85rem;
+      margin-top: 1.5rem;
+    }
+    .welcome-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.15rem;
+      box-shadow: var(--shadow);
+      transition: transform .15s, border-color .15s;
+    }
+    .welcome-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+    .welcome-card h3 {
+      font-size: 0.88rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+      color: var(--text);
+    }
+    .welcome-card p {
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .welcome-card .count {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 0.25rem;
+    }
+    .welcome-tips {
+      margin-top: 1.5rem;
+      padding: 1rem 1.15rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+    .welcome-tips strong { color: var(--text-soft); font-weight: 600; }
+    .welcome-tips code {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      padding: 0.12rem 0.4rem;
+      border-radius: 5px;
+      background: var(--surface2);
+      color: var(--purple);
+    }
+    .detail-wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    .ep-hero {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.35rem 1.5rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow);
+    }
+    .ep-hero-top { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    .ep-hero h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -.02em; }
+    .ep-path {
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      color: var(--accent-2);
+      background: var(--input-bg);
+      padding: 0.5rem 0.85rem;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      word-break: break-all;
+    }
+    .ep-desc { color: var(--muted); font-size: 0.9rem; line-height: 1.65; }
+    .notes { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.35rem; }
+    .note {
+      font-size: 0.8rem;
+      color: var(--muted);
+      padding: 0.45rem 0.65rem;
+      background: var(--surface2);
+      border-radius: 6px;
+      border-left: 3px solid var(--accent);
+    }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; align-items: start; }
+    @media (max-width: 960px) { .split { grid-template-columns: 1fr; } }
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .section-head {
+      padding: 0.65rem 1rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .section-head .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    .param-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .param-table th {
+      text-align: left;
+      padding: 0.55rem 1rem;
+      background: var(--surface3);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      border-bottom: 1px solid var(--border);
+    }
+    .param-table td {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .param-table tr:last-child td { border-bottom: none; }
+    .param-table tr:hover td { background: var(--hover-bg); }
+    .p-name { font-family: var(--mono); color: var(--purple); font-size: 0.78rem; }
+    .p-type { font-family: var(--mono); font-size: 0.72rem; color: var(--accent); }
+    .p-req {
+      display: inline-block;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 0.12rem 0.4rem;
+      border-radius: 4px;
+    }
+    .p-req.yes { background: rgba(244,112,103,.15); color: var(--red); }
+    .p-req.no { background: var(--surface3); color: var(--muted); }
+    .p-desc { color: var(--muted); line-height: 1.5; }
+    pre.example {
+      margin: 0;
+      padding: 1.1rem 1.15rem;
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      line-height: 1.6;
+      color: var(--code-fg);
+      background: var(--input-bg);
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .try-section { position: sticky; top: 0; }
+    .param-inputs { padding: 0.85rem 1rem; display: flex; flex-direction: column; gap: 0.65rem; }
+    .param-field label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      margin-bottom: 0.3rem;
+      color: var(--muted);
+    }
+    .param-field label code { font-family: var(--mono); color: var(--purple); font-size: 0.78rem; }
+    .param-field input, .param-field textarea, .param-field select {
+      width: 100%;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.5rem 0.65rem;
+      font-size: 0.82rem;
+      font-family: var(--mono);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .param-field textarea { min-height: 140px; resize: vertical; line-height: 1.5; }
+    .param-field input:focus, .param-field textarea:focus { outline: none; border-color: var(--accent); }
+    .file-zone {
+      border: 1px dashed var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+    }
+    .file-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
+    .file-zone input { display: none; }
+    .actions {
+      padding: 0.85rem 1rem;
+      display: flex;
+      gap: 0.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .btn {
+      border: none;
+      border-radius: 7px;
+      padding: 0.5rem 1.1rem;
+      font-size: 0.84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: filter .12s, transform .1s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn-primary { background: var(--accent-gradient); color: #fff; box-shadow: 0 4px 14px rgba(91,157,255,.3); }
+    [data-theme="light"] .btn-primary { box-shadow: 0 4px 14px rgba(37,99,235,.2); }
+    .btn-primary:hover { filter: brightness(1.06); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+    .response-box { border-top: 1px solid var(--border); }
+    .response-meta {
+      padding: 0.55rem 1rem;
+      font-size: 0.78rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      background: var(--surface3);
+    }
+    .status-pill {
+      font-family: var(--mono);
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 20px;
+      font-size: 0.72rem;
+    }
+    .status-pill.ok { background: var(--green-bg); color: var(--green); }
+    .status-pill.err { background: rgba(244,112,103,.15); color: var(--red); }
+    .time-pill { color: var(--muted); }
+    pre.response-body {
+      margin: 0; padding: 1.1rem 1.15rem;
+      font-family: var(--mono); font-size: 0.75rem;
+      line-height: 1.6; max-height: 360px; overflow: auto;
+      white-space: pre-wrap; word-break: break-word;
+      color: var(--code-fg); background: var(--input-bg);
+    }
+    .empty-resp { padding: 1.5rem; text-align: center; color: var(--muted); font-size: 0.82rem; }
+    code { font-family: var(--mono); font-size: 0.88em; color: var(--purple); }
+    .section { box-shadow: var(--shadow); }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .sidebar { width: 100%; max-height: 42vh; }
+      .sidebar-head { padding: 0.75rem; }
+      .try-section { position: static; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <div class="logo-icon">XR</div>
+    <div><h1>Xray HTTP API</h1><span>Documentation &amp; live testing</span></div>
+  </div>
+  <div class="auth-bar">
+    <div class="field-inline"><label>Base URL</label><input class="wide" id="baseUrl" type="url"></div>
+    <div class="field-inline"><label>Username</label><input id="username" type="text" placeholder="optional" autocomplete="username"></div>
+    <div class="field-inline"><label>Password</label><input id="password" type="password" placeholder="optional" autocomplete="current-password"></div>
+  </div>
+  <div class="header-actions">
+    <button class="theme-btn" id="themeBtn" type="button" title="Toggle theme" aria-label="Toggle dark/light theme">
+      <span class="icon-sun" aria-hidden="true">☀</span>
+      <span class="icon-moon" aria-hidden="true">☽</span>
+    </button>
+  </div>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <h2>Endpoints</h2>
+      <input class="sidebar-search" type="search" id="search" placeholder="Filter by name or path…" autocomplete="off">
+    </div>
+    <nav class="ep-list" id="epList"></nav>
+  </aside>
+  <main class="main" id="main">
+    <div class="welcome" id="welcome">
+      <div class="welcome-hero">
+        <div class="welcome-badge">Interactive API reference</div>
+        <h2>Xray HTTP API</h2>
+        <p>مستندات زنده با امکان تست مستقیم روی instance در حال اجرا. از سایدبار endpoint انتخاب کن یا جستجو کن.</p>
+      </div>
+      <div class="welcome-grid" id="welcomeStats"></div>
+      <div class="welcome-tips">
+        <strong>نکته:</strong> mutationها (add/edit/remove) پس از اعمال runtime، فایل <code>config.json</code> را هم به‌روز می‌کنند.
+        برای احراز هویت، username/password را در بالا وارد کن — در session ذخیره می‌شود.
+      </div>
+    </div>
+    <div id="detail" class="detail-wrap" style="display:none"></div>
+  </main>
+</div>
+<script>
+const ENDPOINTS = [
+  {
+    id: 'logger-restart', category: 'logger', method: 'POST', path: '/api/logger/restart',
+    title: 'Restart logger', desc: 'Restarts the Xray logging subsystem. No request body.',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'stats', category: 'stats', method: 'GET', path: '/api/stats',
+    title: 'Get counter', desc: 'Exact counter name only. For patterns or regex (e.g. (uplink|downlink)) use /api/stats/query.',
+    queryParams: [
+      { name: 'name', type: 'string', required: true, default: 'inbound>>>my-in>>>traffic>>>downlink', desc: 'Full counter name.' },
+      { name: 'reset', type: 'boolean', required: false, default: 'false', desc: 'If true or 1, reset counter after reading.' },
+    ],
+    response: '{\n  "stat": {\n    "name": "inbound>>>my-in>>>traffic>>>downlink",\n    "value": 12345\n  }\n}',
+  },
+  {
+    id: 'stats-query', category: 'stats', method: 'GET', path: '/api/stats/query',
+    title: 'Query counters', desc: 'Match counters by pattern (substring or auto-regex). grouped=true returns categorized stats; which groups appear is inferred from pattern (inbound>>>, user>>>, …) or set via group=.',
+    queryParams: [
+      { name: 'pattern', type: 'string', required: false, default: '', desc: 'Substring or auto-detected regex filter.' },
+      { name: 'reset', type: 'boolean', required: false, default: 'false', desc: 'Reset matched counters after read.' },
+      { name: 'grouped', type: 'boolean', required: false, default: 'false', desc: 'true — categorized output instead of flat list.' },
+      { name: 'group', type: 'string', required: false, default: '', desc: 'Optional: inbound, outbound, user (comma-separated). Default: inferred from pattern.' },
+    ],
+    response: '{\n  "stat": [\n    { "name": "user>>>a@x.com>>>traffic>>>uplink", "value": 100 }\n  ]\n}\n\n// grouped=true&pattern=inbound>>>\n{\n  "stats": {\n    "inbound": { "vless-in": { "uplink": 1024, "downlink": 4096 } }\n  }\n}',
+  },
+  {
+    id: 'stats-sys', category: 'stats', method: 'GET', path: '/api/stats/sys',
+    title: 'System statistics', desc: 'Runtime and memory stats: goroutines, alloc, uptime, GC, etc.',
+    response: '{\n  "uptime": 3600,\n  "numGoroutine": 42,\n  "alloc": 12345678,\n  "numGC": 5\n}',
+  },
+  {
+    id: 'stats-online', category: 'stats', method: 'GET', path: '/api/stats/online',
+    title: 'Online session count', desc: 'Active session count for one user (by email).',
+    queryParams: [
+      { name: 'email', type: 'string', required: true, default: 'user@example.com', desc: 'User email address.' },
+    ],
+    response: '{\n  "stat": {\n    "name": "user>>>user@example.com>>>online",\n    "value": 2\n  }\n}',
+  },
+  {
+    id: 'stats-iplist', category: 'stats', method: 'GET', path: '/api/stats/online/iplist',
+    title: 'Online IP list', desc: 'Source IPs currently associated with a user\'s sessions.',
+    queryParams: [
+      { name: 'email', type: 'string', required: true, default: 'user@example.com', desc: 'User email address.' },
+    ],
+    response: '{\n  "name": "user>>>user@example.com>>>online",\n  "ips": { "1.2.3.4": 1700000000 }\n}',
+  },
+  {
+    id: 'stats-users', category: 'stats', method: 'GET', path: '/api/stats/online/users',
+    title: 'All online users', desc: 'List of emails with at least one active session.',
+    response: '{\n  "users": ["user1@example.com", "user2@example.com"]\n}',
+  },
+  {
+    id: 'stats-all', category: 'stats', method: 'GET', path: '/api/stats/online/all',
+    title: 'Online users + IPs', desc: 'Single call returning every online user and their source IPs with last-seen timestamps.',
+    notes: ['Fetches IP lists in parallel per user.', 'Repeat email query param to filter specific users.'],
+    queryParams: [
+      { name: 'email', type: 'string', required: false, default: '', desc: 'Optional, repeatable. Filter to specific users.' },
+    ],
+    response: '{\n  "users": [\n    {\n      "email": "user1@example.com",\n      "ips": { "1.2.3.4": 1700000000 }\n    }\n  ]\n}',
+  },
+  {
+    id: 'inbounds-add', category: 'inbounds', method: 'POST', path: '/api/inbounds/add',
+    title: 'Add inbounds', desc: 'Adds one or more inbounds. JSON must match Xray inbound config format.',
+    bodyParams: [
+      { name: 'inbounds', type: 'array', required: true, desc: 'Array of inbound objects (tag, protocol, listen, port, settings, …).' },
+    ],
+    body: '{\n  "inbounds": [\n    {\n      "tag": "new-in",\n      "protocol": "vless",\n      "listen": "0.0.0.0",\n      "port": 8443,\n      "settings": { "clients": [], "decryption": "none" }\n    }\n  ]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'inbounds-edit', category: 'inbounds', method: 'POST', path: '/api/inbounds/edit',
+    title: 'Edit inbounds', desc: 'Replaces existing inbounds by tag (runtime remove+add, config upsert). Tag must already exist.',
+    bodyParams: [
+      { name: 'inbounds', type: 'array', required: true, desc: 'Full inbound objects with existing tag.' },
+    ],
+    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "protocol": "vless",\n      "listen": "0.0.0.0",\n      "port": 443,\n      "settings": { "clients": [], "decryption": "none" }\n    }\n  ]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'inbounds-remove', category: 'inbounds', method: 'POST', path: '/api/inbounds/remove',
+    title: 'Remove inbounds', desc: 'Removes inbounds by tag.',
+    bodyParams: [{ name: 'tags', type: 'string[]', required: true, desc: 'Inbound tags to remove.' }],
+    body: '{\n  "tags": ["old-inbound"]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'inbounds-list', category: 'inbounds', method: 'GET', path: '/api/inbounds/list',
+    title: 'List inbounds', desc: 'Returns configured inbounds. Use tags_only for tag list only.',
+    queryParams: [
+      { name: 'tags_only', type: 'string', required: false, default: '', desc: 'Set to 1 for tags only.' },
+      { name: 'isOnlyTags', type: 'boolean', required: false, default: '', desc: 'Alternative to tags_only=true.' },
+    ],
+    response: '{\n  "inbounds": [{ "tag": "vless-in", "protocol": "vless", "listen": "0.0.0.0", "port": 443, "settings": { "clients": [] } }]\n}',
+  },
+  {
+    id: 'users-add', category: 'users', method: 'POST', path: '/api/inbounds/users/add',
+    title: 'Add inbound users', desc: 'Adds users to existing inbounds. Only tag + settings.clients required; protocol is inferred.',
+    bodyParams: [
+      { name: 'inbounds', type: 'array', required: true, desc: 'Each item: tag + settings with clients list.' },
+    ],
+    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "uuid-here", "email": "user@example.com" }\n        ]\n      }\n    }\n  ]\n}',
+    response: '{\n  "added_users": 1\n}',
+  },
+  {
+    id: 'users-edit', category: 'users', method: 'POST', path: '/api/inbounds/users/edit',
+    title: 'Edit inbound users', desc: 'Updates existing users by email (remove+add at runtime). Clients must already exist.',
+    bodyParams: [
+      { name: 'inbounds', type: 'array', required: true, desc: 'Each item: tag + settings.clients with existing emails.' },
+    ],
+    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "new-uuid", "email": "user@example.com", "flow": "xtls-rprx-vision" }\n        ]\n      }\n    }\n  ]\n}',
+    response: '{\n  "updated_users": 1\n}',
+  },
+  {
+    id: 'users-remove', category: 'users', method: 'POST', path: '/api/inbounds/users/remove',
+    title: 'Remove inbound users', desc: 'Removes users from one inbound by email.',
+    bodyParams: [
+      { name: 'tag', type: 'string', required: true, desc: 'Inbound tag.' },
+      { name: 'emails', type: 'string[]', required: true, desc: 'User emails to remove.' },
+    ],
+    body: '{\n  "tag": "vless-in",\n  "emails": ["user@example.com"]\n}',
+    response: '{\n  "removed_users": 1\n}',
+  },
+  {
+    id: 'users-get', category: 'users', method: 'GET', path: '/api/inbounds/users',
+    title: 'Get inbound users', desc: 'Returns user(s) for an inbound.',
+    queryParams: [
+      { name: 'tag', type: 'string', required: true, default: 'vless-in', desc: 'Inbound tag.' },
+      { name: 'email', type: 'string', required: false, default: '', desc: 'Optional — return one user only.' },
+    ],
+    response: '{\n  "users": [\n    { "id": "uuid-here", "email": "user@example.com", "flow": "xtls-rprx-vision" }\n  ]\n}',
+  },
+  {
+    id: 'users-count', category: 'users', method: 'GET', path: '/api/inbounds/users/count',
+    title: 'Inbound user count', desc: 'Number of users on an inbound.',
+    queryParams: [{ name: 'tag', type: 'string', required: true, default: 'vless-in', desc: 'Inbound tag.' }],
+    response: '{\n  "count": 42\n}',
+  },
+  {
+    id: 'outbounds-add', category: 'outbounds', method: 'POST', path: '/api/outbounds/add',
+    title: 'Add outbounds', desc: 'Adds one or more outbounds (Xray outbound JSON format).',
+    bodyParams: [{ name: 'outbounds', type: 'array', required: true, desc: 'Array of outbound config objects.' }],
+    body: '{\n  "outbounds": [\n    { "tag": "proxy", "protocol": "freedom", "settings": {} }\n  ]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'outbounds-edit', category: 'outbounds', method: 'POST', path: '/api/outbounds/edit',
+    title: 'Edit outbounds', desc: 'Replaces existing outbounds by tag. Tag must already exist.',
+    bodyParams: [{ name: 'outbounds', type: 'array', required: true, desc: 'Full outbound config objects with existing tag.' }],
+    body: '{\n  "outbounds": [\n    { "tag": "proxy", "protocol": "freedom", "settings": {} }\n  ]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'outbounds-remove', category: 'outbounds', method: 'POST', path: '/api/outbounds/remove',
+    title: 'Remove outbounds', desc: 'Removes outbounds by tag.',
+    bodyParams: [{ name: 'tags', type: 'string[]', required: true, desc: 'Outbound tags to remove.' }],
+    body: '{\n  "tags": ["old-outbound"]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'outbounds-list', category: 'outbounds', method: 'GET', path: '/api/outbounds/list',
+    title: 'List outbounds', desc: 'Returns configured outbounds.',
+    queryParams: [{ name: 'tags_only', type: 'string', required: false, default: '', desc: 'Set to 1 for tags only.' }],
+    response: '{\n  "outbounds": [{ "tag": "proxy", ... }]\n}',
+  },
+  {
+    id: 'rules-add', category: 'routing', method: 'POST', path: '/api/rules/add',
+    title: 'Add routing rules', desc: 'Adds routing rules at runtime. Use should_append query param to append instead of prepend.',
+    queryParams: [
+      { name: 'should_append', type: 'boolean', required: false, default: 'false', desc: 'true or 1 to append rules; omit or false to prepend.' },
+    ],
+    bodyParams: [
+      { name: 'routing', type: 'object', required: true, desc: 'Routing block with rules array (same as Xray config).' },
+    ],
+    body: '{\n  "routing": {\n    "rules": [\n      {\n        "type": "field",\n        "outboundTag": "direct",\n        "domain": ["geosite:cn"]\n      }\n    ]\n  }\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'rules-edit', category: 'routing', method: 'POST', path: '/api/rules/edit',
+    title: 'Edit routing rule', desc: 'Replaces one rule by rule_tag. Provide routing.rules (one rule) or a single rule object.',
+    bodyParams: [
+      { name: 'rule_tag', type: 'string', required: true, desc: 'Existing ruleTag to replace.' },
+      { name: 'routing', type: 'object', required: false, desc: 'Routing block with one rule.' },
+      { name: 'rule', type: 'object', required: false, desc: 'Single rule object (alternative to routing).' },
+    ],
+    body: '{\n  "rule_tag": "my-rule",\n  "rule": {\n    "type": "field",\n    "ruleTag": "my-rule",\n    "outboundTag": "direct",\n    "domain": ["geosite:cn"]\n  }\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'rules-remove', category: 'routing', method: 'POST', path: '/api/rules/remove',
+    title: 'Remove routing rules', desc: 'Removes rules by ruleTag.',
+    bodyParams: [{ name: 'ruleTags', type: 'string[]', required: true, desc: 'Rule tags to remove.' }],
+    body: '{\n  "ruleTags": ["my-rule"]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'rules-list', category: 'routing', method: 'GET', path: '/api/rules/list',
+    title: 'List routing rules', desc: 'Returns current routing rules (tag + ruleTag).',
+    response: '{\n  "rules": [{ "tag": "direct", "ruleTag": "rule-1" }]\n}',
+  },
+  {
+    id: 'balancer-info', category: 'routing', method: 'GET', path: '/api/balancer/info',
+    title: 'Balancer info', desc: 'Returns balancer configuration and override state.',
+    queryParams: [{ name: 'tag', type: 'string', required: true, default: 'balancer-1', desc: 'Balancer tag.' }],
+    response: '{\n  "balancer": { "selector": [...], "override": { "target": "out-a" } }\n}',
+  },
+  {
+    id: 'balancer-override', category: 'routing', method: 'POST', path: '/api/balancer/override',
+    title: 'Override balancer', desc: 'Force balancer to use a specific outbound.',
+    bodyParams: [
+      { name: 'tag', type: 'string', required: true, desc: 'Balancer tag.' },
+      { name: 'target', type: 'string', required: true, desc: 'Outbound tag to use.' },
+    ],
+    body: '{\n  "tag": "balancer-1",\n  "target": "outbound-a"\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'sourceip-block', category: 'routing', method: 'POST', path: '/api/sourceip/block',
+    title: 'Block source IPs', desc: 'Creates or updates a routing rule to block traffic from source IPs.',
+    bodyParams: [
+      { name: 'outbound', type: 'string', required: true, desc: 'Outbound tag (e.g. blocked).' },
+      { name: 'inbound', type: 'string', required: false, desc: 'Limit rule to one inbound tag.' },
+      { name: 'rule_tag', type: 'string', required: false, desc: 'Rule tag (default: sourceIpBlock).' },
+      { name: 'reset', type: 'boolean', required: false, desc: 'Remove existing rule before adding.' },
+      { name: 'source_ips', type: 'string[]', required: true, desc: 'IPs to block.' },
+    ],
+    body: '{\n  "outbound": "blocked",\n  "inbound": "socks",\n  "rule_tag": "sourceIpBlock",\n  "reset": false,\n  "source_ips": ["1.2.3.4", "5.6.7.8"]\n}',
+    response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'config-import', category: 'config', method: 'POST', path: '/api/config/import',
+    title: 'Import config file', desc: 'Writes config.json to disk and hot-reloads inbounds, outbounds, and routing (no restart).',
+    multipart: true,
+    formParams: [
+      { name: 'file', type: 'file', required: true, desc: 'config.json file (application/json).' },
+      { name: 'path', type: 'string', required: false, desc: 'Target path; default = startup config path.' },
+      { name: 'apply', type: 'boolean', required: false, desc: 'true (default) apply to runtime; false = file only.' },
+    ],
+    response: '{\n  "status": "ok",\n  "path": "/etc/xray/config.json",\n  "applied": {\n    "inbounds": { "added": 1, "removed": 0, "updated": 2 },\n    "routing": true\n  }\n}',
+  },
+];
+
+const CATEGORIES = {
+  logger: 'Logger',
+  stats: 'Statistics',
+  inbounds: 'Inbounds',
+  users: 'Inbound Users',
+  outbounds: 'Outbounds',
+  routing: 'Routing',
+  balancer: 'Balancer',
+  config: 'Config',
+};
+
+const $ = id => document.getElementById(id);
+let currentEpId = null;
+
+function initTheme() {
+  const stored = localStorage.getItem('xray_docs_theme');
+  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = stored || (prefersLight ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', theme);
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('xray_docs_theme', next);
+}
+initTheme();
+$('themeBtn')?.addEventListener('click', toggleTheme);
+
+function renderWelcomeStats() {
+  const el = $('welcomeStats');
+  if (!el) return;
+  const counts = {};
+  ENDPOINTS.forEach(ep => { counts[ep.category] = (counts[ep.category] || 0) + 1; });
+  const cards = [
+    { title: 'Endpoints', count: ENDPOINTS.length, desc: 'REST API paths documented' },
+    { title: 'Categories', count: Object.keys(CATEGORIES).length, desc: 'Stats, inbounds, routing, …' },
+    { title: 'Mutations', count: ENDPOINTS.filter(e => e.method === 'POST' && !e.path.includes('/stats')).length, desc: 'Add, edit, remove operations' },
+    { title: 'Live try-it', count: '✓', desc: 'Send real requests from browser' },
+  ];
+  el.innerHTML = cards.map(c => `
+    <div class="welcome-card">
+      <div class="count">${esc(String(c.count))}</div>
+      <h3>${esc(c.title)}</h3>
+      <p>${esc(c.desc)}</p>
+    </div>`).join('');
+}
+
+function loadSettings() {
+  $('baseUrl').value = sessionStorage.getItem('xray_api_base') || location.origin;
+  $('username').value = sessionStorage.getItem('xray_api_user') || '';
+  $('password').value = sessionStorage.getItem('xray_api_pass') || '';
+}
+function saveSettings() {
+  sessionStorage.setItem('xray_api_base', $('baseUrl').value.trim());
+  sessionStorage.setItem('xray_api_user', $('username').value);
+  sessionStorage.setItem('xray_api_pass', $('password').value);
+}
+['baseUrl','username','password'].forEach(id => $(id).addEventListener('change', saveSettings));
+
+function renderParamTable(rows, title) {
+  if (!rows?.length) return '';
+  const trs = rows.map(p => `
+    <tr>
+      <td><span class="p-name">${esc(p.name)}</span></td>
+      <td><span class="p-type">${esc(p.type)}</span></td>
+      <td><span class="p-req ${p.required ? 'yes' : 'no'}">${p.required ? 'required' : 'optional'}</span></td>
+      <td class="p-desc">${esc(p.desc)}</td>
+    </tr>`).join('');
+  return `
+    <div class="section">
+      <div class="section-head"><span class="dot"></span>${title}</div>
+      <table class="param-table">
+        <thead><tr><th>Name</th><th>Type</th><th></th><th>Description</th></tr></thead>
+        <tbody>${trs}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderList(filter = '') {
+  const q = filter.toLowerCase().trim();
+  const list = $('epList');
+  list.innerHTML = '';
+  const filtered = ENDPOINTS.filter(ep => {
+    if (!q) return true;
+    const hay = (ep.title + ' ' + ep.path + ' ' + ep.desc + ' ' + ep.method + ' ' + (CATEGORIES[ep.category] || '')).toLowerCase();
+    return hay.includes(q);
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="padding:1rem;color:var(--muted);font-size:.8rem;text-align:center">No match</div>';
+    return;
+  }
+
+  const byCat = {};
+  filtered.forEach(ep => {
+    const cat = ep.category || 'other';
+    if (!byCat[cat]) byCat[cat] = [];
+    byCat[cat].push(ep);
+  });
+
+  Object.keys(CATEGORIES).forEach(cat => {
+    const items = byCat[cat];
+    if (!items?.length) return;
+    const label = document.createElement('div');
+    label.className = 'cat-label';
+    label.textContent = CATEGORIES[cat];
+    list.appendChild(label);
+    items.sort((a, b) => a.path.localeCompare(b.path));
+    items.forEach(ep => {
+      const a = document.createElement('div');
+      a.className = 'ep-item';
+      a.dataset.id = ep.id;
+      a.innerHTML = `
+      <span class="badge-method ${ep.method}">${ep.method}</span>
+      <div class="ep-item-body">
+        <div class="ep-item-title">${esc(ep.title)}</div>
+        <div class="ep-item-path">${esc(ep.path)}</div>
+      </div>`;
+      a.onclick = () => selectEndpoint(ep.id);
+      if (ep.id === currentEpId) a.classList.add('active');
+      list.appendChild(a);
+    });
+  });
+}
+
+function buildQueryInputs(ep) {
+  if (!ep.queryParams?.length) return '';
+  const fields = ep.queryParams.map((p, i) => `
+    <div class="param-field" data-q="${esc(p.name)}">
+      <label><code>${esc(p.name)}</code><span class="p-req ${p.required ? 'yes' : 'no'}">${p.required ? 'required' : 'optional'}</span></label>
+      <input type="text" id="q_${i}" value="${esc(p.default || '')}" placeholder="${esc(p.type)}">
+    </div>`).join('');
+  return `<div class="param-inputs">${fields}</div>`;
+}
+
+function buildTryPanel(ep) {
+  if (ep.multipart) {
+    return `
+      <div class="param-inputs">
+        <div class="param-field">
+          <label><code>file</code><span class="p-req yes">required</span></label>
+          <label class="file-zone" id="fileZone">Click or drop config.json<input type="file" id="reqFile" accept=".json,application/json"></label>
+          <div id="fileName" style="font-size:.78rem;color:var(--muted);margin-top:.35rem"></div>
+        </div>
+        <div class="param-field">
+          <label><code>path</code><span class="p-req no">optional</span></label>
+          <input type="text" id="formPath" placeholder="/etc/xray/config.json">
+        </div>
+        <div class="param-field">
+          <label><code>apply</code><span class="p-req no">optional</span></label>
+          <input type="text" id="formApply" value="true" placeholder="true|false">
+        </div>
+      </div>`;
+  }
+  if (ep.method === 'POST' && ep.body) {
+    const query = ep.queryParams?.length ? buildQueryInputs(ep) : '';
+    return `${query}<div class="param-inputs"><div class="param-field"><label>JSON body</label><textarea id="reqBody">${esc(ep.body)}</textarea></div></div>`;
+  }
+  if (ep.queryParams?.length) return buildQueryInputs(ep);
+  return `<div class="empty-resp">No parameters — click Send request.</div>`;
+}
+
+function selectEndpoint(id) {
+  const ep = ENDPOINTS.find(e => e.id === id);
+  if (!ep) return;
+  currentEpId = id;
+  $('welcome').style.display = 'none';
+  $('detail').style.display = 'block';
+  document.querySelectorAll('.ep-item').forEach(el => el.classList.toggle('active', el.dataset.id === id));
+  if (location.hash !== '#' + id) location.hash = id;
+
+  const notes = (ep.notes || []).map(n => `<div class="note">${esc(n)}</div>`).join('');
+  const docCol = `
+    ${renderParamTable(ep.queryParams, 'Query parameters')}
+    ${renderParamTable(ep.bodyParams, 'Request body fields')}
+    ${renderParamTable(ep.formParams, 'Form fields (multipart)')}
+    ${ep.response ? `
+      <div class="section">
+        <div class="section-head"><span class="dot"></span>Example response</div>
+        <pre class="example">${esc(ep.response)}</pre>
+      </div>` : ''}`;
+
+  $('detail').innerHTML = `
+    <div class="ep-hero">
+      <div class="ep-hero-top">
+        <span class="badge-method ${ep.method}">${ep.method}</span>
+        <h2>${esc(ep.title)}</h2>
+      </div>
+      <div class="ep-path">${esc(ep.path)}</div>
+      <p class="ep-desc" style="margin-top:.85rem">${esc(ep.desc)}</p>
+      ${notes ? `<div class="notes">${notes}</div>` : ''}
+    </div>
+    <div class="split">
+      <div class="doc-col">${docCol || '<div class="section"><div class="empty-resp">No parameters for this endpoint.</div></div>'}</div>
+      <div class="try-section">
+        <div class="section">
+          <div class="section-head"><span class="dot"></span>Try it</div>
+          ${buildTryPanel(ep)}
+          <div class="actions">
+            <button class="btn btn-primary" id="sendBtn">Send request</button>
+            <button class="btn btn-ghost" id="resetBtn">Reset</button>
+          </div>
+          <div class="response-box" id="responseBox" style="display:none">
+            <div class="response-meta" id="responseMeta"></div>
+            <pre class="response-body" id="responseBody"></pre>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  $('sendBtn').onclick = () => sendRequest(ep);
+  $('resetBtn').onclick = () => selectEndpoint(ep.id);
+  if (ep.multipart) {
+    const fi = $('reqFile');
+    const zone = $('fileZone');
+    fi.onchange = () => { $('fileName').textContent = fi.files[0]?.name || ''; };
+    zone.ondragover = e => { e.preventDefault(); zone.style.borderColor = 'var(--accent)'; };
+    zone.ondragleave = () => { zone.style.borderColor = ''; };
+    zone.ondrop = e => {
+      e.preventDefault();
+      zone.style.borderColor = '';
+      if (e.dataTransfer.files.length) { fi.files = e.dataTransfer.files; fi.dispatchEvent(new Event('change')); }
+    };
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function buildQueryString(ep) {
+  if (!ep.queryParams?.length) return '';
+  const parts = [];
+  ep.queryParams.forEach((p, i) => {
+    const el = $(`q_${i}`);
+    if (!el) return;
+    const v = el.value.trim();
+    if (v) parts.push(encodeURIComponent(p.name) + '=' + encodeURIComponent(v));
+  });
+  return parts.join('&');
+}
+
+async function sendRequest(ep) {
+  saveSettings();
+  const base = $('baseUrl').value.trim().replace(/\/$/, '');
+  let url = base + ep.path;
+  const qs = buildQueryString(ep);
+  if (qs) url += '?' + qs;
+
+  const headers = {};
+  const user = $('username').value;
+  const pass = $('password').value;
+  if (user && pass) headers['Authorization'] = 'Basic ' + btoa(user + ':' + pass);
+
+  const opts = { method: ep.method, headers };
+  const t0 = performance.now();
+
+  try {
+    if (ep.multipart) {
+      const fi = $('reqFile');
+      if (!fi?.files?.length) { showResponse(0, 'Please select a config.json file.', true); return; }
+      const fd = new FormData();
+      fd.append('file', fi.files[0]);
+      const path = $('formPath')?.value.trim();
+      if (path) fd.append('path', path);
+      const apply = $('formApply')?.value.trim();
+      if (apply) fd.append('apply', apply);
+      opts.body = fd;
+    } else if (ep.method === 'POST') {
+      const ta = $('reqBody');
+      if (ta) {
+        const body = ta.value.trim();
+        if (body) {
+          JSON.parse(body);
+          headers['Content-Type'] = 'application/json';
+          opts.body = body;
+        }
+      }
+    }
+
+    const res = await fetch(url, opts);
+    const ms = Math.round(performance.now() - t0);
+    const text = await res.text();
+    let pretty = text;
+    try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {}
+    showResponse(res.status, pretty, !res.ok, ms);
+  } catch (err) {
+    showResponse(0, String(err.message || err), true);
+  }
+}
+
+function showResponse(status, body, isErr, ms) {
+  const box = $('responseBox');
+  box.style.display = 'block';
+  $('responseMeta').innerHTML = status
+    ? `<span class="status-pill ${isErr ? 'err' : 'ok'}">HTTP ${status}</span><span class="time-pill">${ms} ms</span>`
+    : `<span class="status-pill err">Client error</span>`;
+  $('responseBody').textContent = body;
+}
+
+$('search').addEventListener('input', () => renderList($('search').value));
+loadSettings();
+renderWelcomeStats();
+renderList();
+const hashId = location.hash.replace(/^#/, '');
+if (ENDPOINTS.find(e => e.id === hashId)) {
+  selectEndpoint(hashId);
+}
+</script>
+</body>
+</html>

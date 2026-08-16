@@ -189,6 +189,8 @@ Xray can expose a REST/JSON HTTP API for automation and panels. Add an `httpapi`
 
 Start Xray with `xray run -c config.json`. When the HTTP API is enabled, the log shows: `HTTP API listening on 127.0.0.1:8080`.
 
+Open **interactive docs & try-it UI** at [http://127.0.0.1:8080/docs](http://127.0.0.1:8080/docs) (no auth required for the page; API calls from the UI use the credentials you enter there).
+
 ### Optional Basic Authentication
 
 HTTP Basic authentication is **optional**. By default, if you only set `listen`, the API accepts requests without credentials (suitable for local use).
