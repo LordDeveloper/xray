@@ -81,6 +81,7 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 	mux.HandleFunc("/api/stats/sys", s.handleSysStats)
 	mux.HandleFunc("/api/stats/online", s.handleStatsOnline)
 	mux.HandleFunc("/api/stats/online/iplist", s.handleStatsOnlineIpList)
+	mux.HandleFunc("/api/stats/online/traffic", s.handleStatsOnlineTraffic)
 	mux.HandleFunc("/api/stats/online/users", s.handleGetAllOnlineUsers)
 	mux.HandleFunc("/api/stats/online/all", s.handleGetAllOnlineUsersWithIps)
 
@@ -314,6 +315,11 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 	pattern := r.URL.Query().Get("pattern")
 	reset := r.URL.Query().Get("reset") == "true" || r.URL.Query().Get("reset") == "1"
 	grouped := r.URL.Query().Get("grouped") == "true" || r.URL.Query().Get("grouped") == "1"
+	onlineOnly := parseQueryBool(r.URL.Query().Get("online_only")) || parseQueryBool(r.URL.Query().Get("onlineOnly"))
+	var onlineSet map[string]bool
+	if onlineOnly {
+		onlineSet = buildOnlineEmailSet(s.statsManager)
+	}
 	if grouped {
 		include, err := resolveGroupFilter(pattern, r.URL.Query().Get("group"))
 		if err != nil {
@@ -325,6 +331,10 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, err)
 			return
 		}
+		if onlineOnly {
+			statsGrouped.filterToOnlineUsers(onlineSet)
+			include = map[string]bool{"user": true}
+		}
 		writeJSON(w, http.StatusOK, map[string]interface{}{"stats": statsGrouped.toFilteredMap(include)})
 		return
 	}
@@ -335,15 +345,19 @@ func (s *Server) handleQueryStats(w http.ResponseWriter, r *http.Request) {
 	}
 	var statList []map[string]interface{}
 	manager.VisitCounters(func(name string, c feature_stats.Counter) bool {
-		if matchStatPattern(name, pattern) {
-			var value int64
-			if reset {
-				value = c.Set(0)
-			} else {
-				value = c.Value()
-			}
-			statList = append(statList, map[string]interface{}{"name": name, "value": value})
+		if !matchStatPattern(name, pattern) {
+			return true
 		}
+		if onlineOnly && !includeUserStatWhenOnlineOnly(name, onlineSet) {
+			return true
+		}
+		var value int64
+		if reset {
+			value = c.Set(0)
+		} else {
+			value = c.Value()
+		}
+		statList = append(statList, map[string]interface{}{"name": name, "value": value})
 		return true
 	})
 	writeJSON(w, http.StatusOK, map[string]interface{}{"stat": statList})
@@ -486,6 +500,22 @@ func (s *Server) handleGetAllOnlineUsersWithIps(w http.ResponseWriter, r *http.R
 		list = append(list, res)
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"users": list})
+}
+
+// handleStatsOnlineTraffic returns uplink/downlink traffic for every currently online subscription (user email).
+func (s *Server) handleStatsOnlineTraffic(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodGet) {
+		return
+	}
+	reset := parseQueryBool(r.URL.Query().Get("reset"))
+	grouped, err := collectGroupedStats(s.statsManager, "user>>>", reset)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	onlineSet := buildOnlineEmailSet(s.statsManager)
+	grouped.filterToOnlineUsers(onlineSet)
+	writeJSON(w, http.StatusOK, onlineUserTrafficResponse(grouped))
 }
 
 // --- Inbounds ---

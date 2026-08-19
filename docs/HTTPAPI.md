@@ -248,6 +248,7 @@ Optionally resets matching counters after reading.
 | `reset`         | boolean | If `true` or `1`, reset matched counters after reading. |
 | `grouped`       | boolean | If `true`, return categorized traffic (see below). |
 | `group`         | string  | Optional with `grouped=true`: `inbound`, `outbound`, `user` (comma-separated). Default: inferred from `pattern`. |
+| `online_only`   | boolean | If `true` or `1`, include only **currently online** subscriptions (`user>>>` traffic). With `grouped=true`, returns the `user` group (and `online` session counts) for online emails only. Aliases: `onlineOnly`. |
 
 **Examples:**
 
@@ -286,6 +287,9 @@ curl 'http://127.0.0.1:8080/api/stats/query?pattern=inbound>>>new-in>>>traffic>>
 
 # User traffic grouped
 curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>&grouped=true'
+
+# Only online subscriptions (user traffic + session counts)
+curl 'http://127.0.0.1:8080/api/stats/query?pattern=user>>>&grouped=true&online_only=true'
 
 # Explicit groups (ignores pattern inference)
 curl 'http://127.0.0.1:8080/api/stats/query?pattern=traffic>>>uplink&grouped=true&group=inbound,outbound'
@@ -382,6 +386,45 @@ curl 'http://127.0.0.1:8080/api/stats/online/users'
 ```
 
 **Success response (200):** `{"users":["user1@example.com","user2@example.com"]}`
+
+---
+
+### Online subscriptions traffic
+
+Returns **uplink/downlink volume** for every subscription (user email) that is **currently online**. Users with active sessions but no traffic counters yet still appear with `sessions` only.
+
+| Method | Path                       |
+|--------|----------------------------|
+| GET    | `/api/stats/online/traffic` |
+
+| Query parameter | Type    | Description |
+|-----------------|---------|-------------|
+| `reset`         | boolean | If `true` or `1`, reset matched user traffic counters after reading. |
+
+**Example:**
+
+```bash
+curl 'http://127.0.0.1:8080/api/stats/online/traffic'
+```
+
+**Success response (200):**
+
+```json
+{
+  "users": {
+    "user1@example.com": {
+      "uplink": 1048576,
+      "downlink": 5242880,
+      "sessions": 2
+    },
+    "user2@example.com": {
+      "sessions": 1
+    }
+  }
+}
+```
+
+Equivalent to `GET /api/stats/query?pattern=user>>>&grouped=true&online_only=true` but optimized for panels/bots (single call, flat `users` map).
 
 ---
 
@@ -1090,7 +1133,8 @@ Adds or updates a routing rule that blocks traffic from specified source IPs (op
 |--------|------|-------------|
 | POST | `/api/logger/restart` | Restart logger |
 | GET | `/api/stats` | Get single counter |
-| GET | `/api/stats/query` | Query counters by pattern (optional grouped) |
+| GET | `/api/stats/query` | Query counters by pattern (optional grouped, online_only) |
+| GET | `/api/stats/online/traffic` | Traffic volume for all online subscriptions |
 | GET | `/api/stats/sys` | System/runtime stats |
 | GET | `/api/stats/online` | Online count for one user |
 | GET | `/api/stats/online/iplist` | Online IP list for one user |

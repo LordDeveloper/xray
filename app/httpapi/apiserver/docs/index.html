@@ -629,8 +629,9 @@ const ENDPOINTS = [
       { name: 'reset', type: 'boolean', required: false, default: 'false', desc: 'Reset matched counters after read.' },
       { name: 'grouped', type: 'boolean', required: false, default: 'false', desc: 'true — categorized output instead of flat list.' },
       { name: 'group', type: 'string', required: false, default: '', desc: 'Optional: inbound, outbound, user (comma-separated). Default: inferred from pattern.' },
+      { name: 'online_only', type: 'boolean', required: false, default: 'false', desc: 'true — only currently online user subscriptions (user>>> traffic). Aliases: onlineOnly.' },
     ],
-    response: '{\n  "stat": [\n    { "name": "user>>>a@x.com>>>traffic>>>uplink", "value": 100 }\n  ]\n}\n\n// grouped=true&pattern=inbound>>>\n{\n  "stats": {\n    "inbound": { "vless-in": { "uplink": 1024, "downlink": 4096 } }\n  }\n}',
+    response: '{\n  "stat": [\n    { "name": "user>>>a@x.com>>>traffic>>>uplink", "value": 100 }\n  ]\n}\n\n// grouped=true&pattern=user>>>&online_only=true\n{\n  "stats": {\n    "user": { "a@x.com": { "uplink": 100, "downlink": 200 } },\n    "online": { "a@x.com": 1 }\n  }\n}',
   },
   {
     id: 'stats-sys', category: 'stats', method: 'GET', path: '/api/stats/sys',
@@ -657,6 +658,14 @@ const ENDPOINTS = [
     id: 'stats-users', category: 'stats', method: 'GET', path: '/api/stats/online/users',
     title: 'All online users', desc: 'List of emails with at least one active session.',
     response: '{\n  "users": ["user1@example.com", "user2@example.com"]\n}',
+  },
+  {
+    id: 'stats-online-traffic', category: 'stats', method: 'GET', path: '/api/stats/online/traffic',
+    title: 'Online subscriptions traffic', desc: 'Uplink/downlink volume for every currently online user (subscription email).',
+    queryParams: [
+      { name: 'reset', type: 'boolean', required: false, default: 'false', desc: 'Reset user traffic counters after read.' },
+    ],
+    response: '{\n  "users": {\n    "user1@example.com": {\n      "uplink": 1048576,\n      "downlink": 5242880,\n      "sessions": 2\n    }\n  }\n}',
   },
   {
     id: 'stats-all', category: 'stats', method: 'GET', path: '/api/stats/online/all',
