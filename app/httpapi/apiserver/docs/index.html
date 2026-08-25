@@ -687,12 +687,13 @@ const ENDPOINTS = [
   },
   {
     id: 'inbounds-edit', category: 'inbounds', method: 'POST', path: '/api/inbounds/edit',
-    title: 'Edit inbounds', desc: 'Replaces existing inbounds by tag (runtime remove+add, config upsert). Tag must already exist.',
+    title: 'Edit inbounds', desc: 'Updates inbounds by tag. Set preserve_clients=true to keep clients and only patch listen/port/stream/sniffing/…',
     bodyParams: [
-      { name: 'inbounds', type: 'array', required: true, desc: 'Full inbound objects with existing tag.' },
+      { name: 'preserve_clients', type: 'boolean', required: false, desc: 'Default false (legacy replace). true = keep runtime+disk clients; ignore request clients.' },
+      { name: 'inbounds', type: 'array', required: true, desc: 'Inbound objects with existing tag (clients optional when preserve_clients).' },
     ],
-    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "protocol": "vless",\n      "listen": "0.0.0.0",\n      "port": 443,\n      "settings": { "clients": [], "decryption": "none" }\n    }\n  ]\n}',
-    response: '{\n  "status": "ok"\n}',
+    body: '{\n  "preserve_clients": true,\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "listen": "0.0.0.0",\n      "port": 443,\n      "protocol": "vless",\n      "streamSettings": { "network": "ws", "wsSettings": { "path": "/ws" } },\n      "settings": { "decryption": "none" }\n    }\n  ]\n}',
+    response: '{\n  "status": "ok",\n  "inbounds": [{ "tag": "vless-in", "clients_count": 5000 }]\n}',
   },
   {
     id: 'inbounds-remove', category: 'inbounds', method: 'POST', path: '/api/inbounds/remove',
@@ -712,31 +713,44 @@ const ENDPOINTS = [
   },
   {
     id: 'users-add', category: 'users', method: 'POST', path: '/api/inbounds/users/add',
-    title: 'Add inbound users', desc: 'Adds users to existing inbounds. Only tag + settings.clients required; protocol is inferred.',
+    title: 'Add inbound users', desc: 'Adds users (max 200/request). Partial success by default; set atomic=true to fail-fast.',
     bodyParams: [
+      { name: 'atomic', type: 'boolean', required: false, desc: 'If true, stop on first error and roll back adds.' },
       { name: 'inbounds', type: 'array', required: true, desc: 'Each item: tag + settings with clients list.' },
     ],
-    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "uuid-here", "email": "user@example.com" }\n        ]\n      }\n    }\n  ]\n}',
-    response: '{\n  "added_users": 1\n}',
+    body: '{\n  "atomic": false,\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "uuid-here", "email": "user@example.com" }\n        ]\n      }\n    }\n  ]\n}',
+    response: '{\n  "succeeded": 1,\n  "failed": 0,\n  "errors": [],\n  "added_users": 1\n}',
   },
   {
     id: 'users-edit', category: 'users', method: 'POST', path: '/api/inbounds/users/edit',
-    title: 'Edit inbound users', desc: 'Updates existing users by email (remove+add at runtime). Clients must already exist.',
+    title: 'Edit inbound users', desc: 'Updates users by email (max 200). Partial success by default.',
     bodyParams: [
+      { name: 'atomic', type: 'boolean', required: false, desc: 'If true, stop on first error.' },
       { name: 'inbounds', type: 'array', required: true, desc: 'Each item: tag + settings.clients with existing emails.' },
     ],
     body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "new-uuid", "email": "user@example.com", "flow": "xtls-rprx-vision" }\n        ]\n      }\n    }\n  ]\n}',
-    response: '{\n  "updated_users": 1\n}',
+    response: '{\n  "succeeded": 1,\n  "failed": 0,\n  "errors": [],\n  "updated_users": 1\n}',
+  },
+  {
+    id: 'users-upsert', category: 'users', method: 'POST', path: '/api/inbounds/users/upsert',
+    title: 'Upsert inbound users', desc: 'Add if email is new, otherwise edit. Ideal for panel sync in chunks of 100–200.',
+    bodyParams: [
+      { name: 'atomic', type: 'boolean', required: false, desc: 'If true, stop on first error.' },
+      { name: 'inbounds', type: 'array', required: true, desc: 'Each item: tag + settings.clients.' },
+    ],
+    body: '{\n  "inbounds": [\n    {\n      "tag": "vless-in",\n      "settings": {\n        "clients": [\n          { "id": "uuid-here", "email": "user@example.com" }\n        ]\n      }\n    }\n  ]\n}',
+    response: '{\n  "succeeded": 1,\n  "failed": 0,\n  "errors": [],\n  "added_users": 1\n}',
   },
   {
     id: 'users-remove', category: 'users', method: 'POST', path: '/api/inbounds/users/remove',
-    title: 'Remove inbound users', desc: 'Removes users from one inbound by email.',
+    title: 'Remove inbound users', desc: 'Removes users by email (max 200). Partial success by default.',
     bodyParams: [
+      { name: 'atomic', type: 'boolean', required: false, desc: 'If true, stop on first error.' },
       { name: 'tag', type: 'string', required: true, desc: 'Inbound tag.' },
       { name: 'emails', type: 'string[]', required: true, desc: 'User emails to remove.' },
     ],
     body: '{\n  "tag": "vless-in",\n  "emails": ["user@example.com"]\n}',
-    response: '{\n  "removed_users": 1\n}',
+    response: '{\n  "succeeded": 1,\n  "failed": 0,\n  "errors": [],\n  "removed_users": 1,\n  "dropped_connections": 0\n}',
   },
   {
     id: 'users-get', category: 'users', method: 'GET', path: '/api/inbounds/users',
@@ -802,6 +816,18 @@ const ENDPOINTS = [
     ],
     body: '{\n  "rule_tag": "my-rule",\n  "rule": {\n    "type": "field",\n    "ruleTag": "my-rule",\n    "outboundTag": "direct",\n    "domain": ["geosite:cn"]\n  }\n}',
     response: '{\n  "status": "ok"\n}',
+  },
+  {
+    id: 'rules-replace', category: 'routing', method: 'POST', path: '/api/rules/replace',
+    title: 'Replace all routing rules', desc: 'Atomically replaces entire routing.rules (runtime + config). Use for region sync.',
+    bodyParams: [
+      { name: 'rules', type: 'array', required: true, desc: 'Full replacement rule list.' },
+      { name: 'domainStrategy', type: 'string', required: false, desc: 'Optional domainStrategy (e.g. AsIs).' },
+      { name: 'domainMatcher', type: 'string', required: false, desc: 'Optional domainMatcher stored in config.' },
+      { name: 'routing', type: 'object', required: false, desc: 'Alternative wrapper: { routing: { rules, … } }.' },
+    ],
+    body: '{\n  "rules": [\n    {\n      "type": "field",\n      "ruleTag": "node:1",\n      "outboundTag": "proxy",\n      "domain": ["geosite:google"]\n    }\n  ],\n  "domainStrategy": "AsIs"\n}',
+    response: '{\n  "status": "ok",\n  "count": 1\n}',
   },
   {
     id: 'rules-remove', category: 'routing', method: 'POST', path: '/api/rules/remove',

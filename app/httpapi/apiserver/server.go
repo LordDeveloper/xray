@@ -577,8 +577,8 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, errors.New("inbounds array is required"))
 		return
 	}
-	// Default true: format updates must not wipe clients. Set preserve_clients=false for full replace.
-	preserve := parseOptionalBool(body.PreserveClients, true)
+	// Default false keeps legacy full-replace. Panel format updates must send preserve_clients=true.
+	preserve := parseOptionalBool(body.PreserveClients, false)
 	ctx := r.Context()
 
 	if preserve {
@@ -1354,6 +1354,12 @@ func (s *Server) handleReplaceRules(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, err)
 		return
 	}
+	// Keep existing balancers when the request only replaces rules.
+	routing, err = ensureRoutingBalancers(s.configPath, routing)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
 	if ConfigBridge.ValidateRoutingRules != nil {
 		if err := ConfigBridge.ValidateRoutingRules(routing); err != nil {
 			writeValidationError(w, err)
@@ -1413,6 +1419,41 @@ func normalizeReplaceRulesBody(raw []byte) (json.RawMessage, int, error) {
 		return nil, 0, errors.New("routing.rules is required")
 	}
 	return routing, len(rc.Rules), nil
+}
+
+func ensureRoutingBalancers(configPath string, routing json.RawMessage) (json.RawMessage, error) {
+	var m map[string]interface{}
+	if err := json.Unmarshal(routing, &m); err != nil {
+		return nil, errors.New("invalid routing json").Base(err)
+	}
+	if _, has := m["balancers"]; has {
+		return routing, nil
+	}
+	if configPath == "" || ConfigBridge.ListConfigRules == nil {
+		return routing, nil
+	}
+	// Reuse list bridge only for rules; read balancers from file via a light open.
+	rootData, err := os.ReadFile(configPath)
+	if err != nil {
+		return routing, nil
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(rootData, &root); err != nil {
+		return routing, nil
+	}
+	routingMap, _ := root["routing"].(map[string]interface{})
+	if routingMap == nil {
+		return routing, nil
+	}
+	if balancers, ok := routingMap["balancers"]; ok {
+		m["balancers"] = balancers
+		out, err := json.Marshal(m)
+		if err != nil {
+			return nil, err
+		}
+		return out, nil
+	}
+	return routing, nil
 }
 
 func wrapSingleRoutingRule(rule json.RawMessage) (json.RawMessage, error) {

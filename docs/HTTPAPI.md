@@ -554,7 +554,7 @@ Updates existing inbounds by tag.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `preserve_clients` | `true` | When `true`, keep runtime + disk clients; only update listen/port/protocol/streamSettings/sniffing/allocate and non-client `settings` fields. Request `settings.clients` is ignored. When `false`, full replace (remove+add) using the request body as-is (legacy). |
+| `preserve_clients` | `false` | When `true`, keep runtime + disk clients; only update listen/port/protocol/streamSettings/sniffing/allocate and non-client `settings` fields. Request `settings.clients` is ignored. When omitted/`false`, full replace (remove+add) using the request body as-is (legacy). |
 
 **Recommended for panel format updates:** always send `"preserve_clients": true` and omit `clients` (or leave them empty). Sync users separately via `/api/inbounds/users/*`.
 
@@ -1047,6 +1047,52 @@ curl -X POST 'http://127.0.0.1:8080/api/rules/edit' \
 
 ---
 
+### Replace all routing rules
+
+Atomically replaces the entire `routing.rules` list in runtime and `config.json` (one request for region sync). Prefer this over N× remove+add.
+
+| Method | Path                  |
+|--------|-----------------------|
+| POST   | `/api/rules/replace`  |
+
+**Request body** (flat or wrapped in `routing`):
+
+```json
+{
+  "rules": [
+    {
+      "type": "field",
+      "ruleTag": "node:1",
+      "outboundTag": "proxy",
+      "domain": ["geosite:google"]
+    }
+  ],
+  "domainStrategy": "AsIs",
+  "domainMatcher": "hybrid"
+}
+```
+
+Or:
+
+```json
+{
+  "routing": {
+    "rules": [ ... ],
+    "domainStrategy": "AsIs"
+  }
+}
+```
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/rules/replace' \
+  -H 'Content-Type: application/json' \
+  -d '{"rules":[{"type":"field","ruleTag":"r1","outboundTag":"direct","domain":["geosite:cn"]}],"domainStrategy":"AsIs"}'
+```
+
+**Success response (200):** `{"status":"ok","count":1}`
+
+---
+
 ### Remove rules
 
 Removes routing rules by rule tag.
@@ -1218,12 +1264,13 @@ Adds or updates a routing rule that blocks traffic from specified source IPs (op
 | GET | `/api/stats/online/users` | All online users |
 | GET | `/api/stats/online/all` | All online users with their IPs (async) |
 | POST | `/api/inbounds/add` | Add inbounds |
-| POST | `/api/inbounds/edit` | Edit inbounds |
+| POST | `/api/inbounds/edit` | Edit inbounds (`preserve_clients=true` keeps clients) |
 | POST | `/api/inbounds/remove` | Remove inbounds |
 | GET | `/api/inbounds/list` | List inbounds |
-| POST | `/api/inbounds/users/add` | Add users to inbounds |
-| POST | `/api/inbounds/users/edit` | Edit users on inbounds |
-| POST | `/api/inbounds/users/remove` | Remove users from inbound |
+| POST | `/api/inbounds/users/add` | Add users to inbounds (bulk, partial success) |
+| POST | `/api/inbounds/users/edit` | Edit users on inbounds (bulk, partial success) |
+| POST | `/api/inbounds/users/upsert` | Upsert users (add or edit by email) |
+| POST | `/api/inbounds/users/remove` | Remove users from inbound (bulk, partial success) |
 | GET | `/api/inbounds/users` | Get user(s) of an inbound |
 | GET | `/api/inbounds/users/count` | Get user count of an inbound |
 | POST | `/api/outbounds/add` | Add outbounds |
@@ -1232,6 +1279,7 @@ Adds or updates a routing rule that blocks traffic from specified source IPs (op
 | GET | `/api/outbounds/list` | List outbounds |
 | POST | `/api/rules/add` | Add routing rules |
 | POST | `/api/rules/edit` | Edit routing rule by tag |
+| POST | `/api/rules/replace` | Replace entire routing.rules atomically |
 | POST | `/api/rules/remove` | Remove routing rules |
 | GET | `/api/rules/list` | List routing rules |
 | GET | `/api/balancer/info` | Get balancer info |
