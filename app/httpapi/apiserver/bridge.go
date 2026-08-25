@@ -28,36 +28,36 @@ type InboundUserFilePatch struct {
 // ConfigBridge wires infra/conf builders without importing that package (avoids import cycles).
 // It is registered from infra/conf/httpapi_bridge.go via init().
 var ConfigBridge struct {
-	BuildInboundHandler     func(raw json.RawMessage) (*core.InboundHandlerConfig, error)
-	BuildInboundProxyOnly   func(tag, protocol string, settings *json.RawMessage) (*core.InboundHandlerConfig, error)
-	BuildOutboundHandler    func(raw json.RawMessage) (*core.OutboundHandlerConfig, error)
-	BuildRouterRules        func(routing json.RawMessage) (proto.Message, error)
-	BuildRouterRulesFromStr func(partialJSON string) (proto.Message, error)
-	ApplyRuntimeConfig      func(target RuntimeApplyTarget, data []byte) (interface{}, error)
-	PatchConfigInbounds                    func(configPath string, upsert []json.RawMessage, removeTags []string) error
-	PatchConfigInboundsPreserveClients     func(configPath string, patches []json.RawMessage) ([]int, error)
-	MergeInboundPreserveClients            func(configPath string, patch json.RawMessage) (json.RawMessage, int, error)
-	PatchConfigOutbounds                   func(configPath string, upsert []json.RawMessage, removeTags []string) error
-	PatchConfigInboundUsers                func(configPath string, patches []InboundUserFilePatch) error
-	PatchConfigInboundUsersRemove          func(configPath, tag string, emails []string) error
-	ListConfigInbounds                     func(configPath string, runtimeTags map[string]struct{}) ([]interface{}, error)
-	ListConfigOutbounds                    func(configPath string, runtimeTags map[string]struct{}) ([]interface{}, error)
-	ListConfigRules                        func(configPath string) ([]interface{}, error)
-	ConfigClientsFromMemoryUsers           func(protocol string, users []*protocol.MemoryUser) ([]interface{}, error)
-	OverlayInboundClients                  func(inbound map[string]interface{}, protocol string, users []*protocol.MemoryUser) error
-	PatchConfigRulesAdd                    func(configPath string, routing json.RawMessage, prepend bool) error
-	PatchConfigRulesRemove                 func(configPath string, ruleTags []string, indices []int) error
-	PatchConfigRulesEdit                   func(configPath string, ruleTag string, rule json.RawMessage) error
-	PatchConfigRulesReplace                func(configPath string, routing json.RawMessage) error
-	ValidateConfigBytes                    func(data []byte) error
-	ValidateInboundBatch                   func(raws []json.RawMessage) error
-	ValidateInboundBatchMeta               func(raws []json.RawMessage) error
-	ValidateOutboundBatch                  func(raws []json.RawMessage) error
-	ValidateRoutingRules                   func(routing json.RawMessage) error
-	ValidateInboundUserSettings            func(protocol string, settings *json.RawMessage) error
-	ValidateNonEmptyTags                   func(field string, tags []string) error
-	ValidateNonEmptyEmails                 func(emails []string) error
-	CountSettingsClients                   func(settings *json.RawMessage) (int, error)
+	BuildInboundHandler                func(raw json.RawMessage) (*core.InboundHandlerConfig, error)
+	BuildInboundProxyOnly              func(tag, protocol string, settings *json.RawMessage) (*core.InboundHandlerConfig, error)
+	BuildOutboundHandler               func(raw json.RawMessage) (*core.OutboundHandlerConfig, error)
+	BuildRouterRules                   func(routing json.RawMessage) (proto.Message, error)
+	BuildRouterRulesFromStr            func(partialJSON string) (proto.Message, error)
+	ApplyRuntimeConfig                 func(target RuntimeApplyTarget, data []byte) (interface{}, error)
+	PatchConfigInbounds                func(configPath string, upsert []json.RawMessage, removeTags []string) error
+	PatchConfigInboundsPreserveClients func(configPath string, patches []json.RawMessage) ([]int, error)
+	MergeInboundPreserveClients        func(configPath string, patch json.RawMessage) (json.RawMessage, int, error)
+	PatchConfigOutbounds               func(configPath string, upsert []json.RawMessage, removeTags []string) error
+	PatchConfigInboundUsers            func(configPath string, patches []InboundUserFilePatch) error
+	PatchConfigInboundUsersRemove      func(configPath, tag string, emails []string) error
+	ListConfigInbounds                 func(configPath string, runtimeTags map[string]struct{}) ([]interface{}, error)
+	ListConfigOutbounds                func(configPath string, runtimeTags map[string]struct{}) ([]interface{}, error)
+	ListConfigRules                    func(configPath string) ([]interface{}, error)
+	ConfigClientsFromMemoryUsers       func(protocol string, users []*protocol.MemoryUser) ([]interface{}, error)
+	OverlayInboundClients              func(inbound map[string]interface{}, protocol string, users []*protocol.MemoryUser) error
+	PatchConfigRulesAdd                func(configPath string, routing json.RawMessage, prepend bool) error
+	PatchConfigRulesRemove             func(configPath string, ruleTags []string, indices []int) error
+	PatchConfigRulesEdit               func(configPath string, ruleTag string, rule json.RawMessage) error
+	PatchConfigRulesReplace            func(configPath string, routing json.RawMessage) error
+	ValidateConfigBytes                func(data []byte) error
+	ValidateInboundBatch               func(raws []json.RawMessage) error
+	ValidateInboundBatchMeta           func(raws []json.RawMessage) error
+	ValidateOutboundBatch              func(raws []json.RawMessage) error
+	ValidateRoutingRules               func(routing json.RawMessage) error
+	ValidateInboundUserSettings        func(protocol string, settings *json.RawMessage) error
+	ValidateNonEmptyTags               func(field string, tags []string) error
+	ValidateNonEmptyEmails             func(emails []string) error
+	CountSettingsClients               func(settings *json.RawMessage) (int, error)
 }
 
 func mustBridge() {

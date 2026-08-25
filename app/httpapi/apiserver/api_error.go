@@ -11,10 +11,10 @@ import (
 
 // APIErrorResponse is the standard JSON error body for HTTP API clients.
 type APIErrorResponse struct {
-	Error           string   `json:"error"`
-	Code            string   `json:"code,omitempty"`
-	Details         []string `json:"details,omitempty"`
-	RuntimeApplied  *bool    `json:"runtime_applied,omitempty"`
+	Error          string   `json:"error"`
+	Code           string   `json:"code,omitempty"`
+	Details        []string `json:"details,omitempty"`
+	RuntimeApplied *bool    `json:"runtime_applied,omitempty"`
 }
 
 func writeAPIErrorMsg(w http.ResponseWriter, status int, msg string) {

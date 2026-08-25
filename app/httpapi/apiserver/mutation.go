@@ -58,7 +58,8 @@ func logMutation(ctx context.Context, op, tag string, clientsCount int, preserve
 func countRequestClients(inbounds []struct {
 	Tag      string           `json:"tag"`
 	Settings *json.RawMessage `json:"settings"`
-}) (int, error) {
+},
+) (int, error) {
 	total := 0
 	for _, inb := range inbounds {
 		var n int

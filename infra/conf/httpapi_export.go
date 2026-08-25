@@ -22,18 +22,18 @@ import (
 )
 
 var inboundProxyTypeToProtocol = map[string]string{
-	"xray.proxy.vless.inbound.Config":            "vless",
-	"xray.proxy.vmess.inbound.Config":            "vmess",
-	"xray.proxy.trojan.ServerConfig":             "trojan",
-	"xray.proxy.shadowsocks.ServerConfig":        "shadowsocks",
+	"xray.proxy.vless.inbound.Config":                   "vless",
+	"xray.proxy.vmess.inbound.Config":                   "vmess",
+	"xray.proxy.trojan.ServerConfig":                    "trojan",
+	"xray.proxy.shadowsocks.ServerConfig":               "shadowsocks",
 	"xray.proxy.shadowsocks_2022.MultiUserServerConfig": "shadowsocks",
-	"xray.proxy.shadowsocks_2022.ServerConfig":   "shadowsocks",
-	"xray.proxy.dokodemo.Config":                 "dokodemo-door",
-	"xray.proxy.http.ServerConfig":                 "http",
-	"xray.proxy.socks.ServerConfig":              "socks",
-	"xray.proxy.wireguard.DeviceConfig":          "wireguard",
-	"xray.proxy.hysteria.ServerConfig":           "hysteria",
-	"xray.proxy.tun.DeviceConfig":                "tun",
+	"xray.proxy.shadowsocks_2022.ServerConfig":          "shadowsocks",
+	"xray.proxy.dokodemo.Config":                        "dokodemo-door",
+	"xray.proxy.http.ServerConfig":                      "http",
+	"xray.proxy.socks.ServerConfig":                     "socks",
+	"xray.proxy.wireguard.DeviceConfig":                 "wireguard",
+	"xray.proxy.hysteria.ServerConfig":                  "hysteria",
+	"xray.proxy.tun.DeviceConfig":                       "tun",
 }
 
 var outboundProxyTypeToProtocol = map[string]string{

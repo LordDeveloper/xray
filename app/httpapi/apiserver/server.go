@@ -18,8 +18,8 @@ import (
 	"github.com/xtls/xray-core/app/stats"
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
-	"github.com/xtls/xray-core/common/protocol"
 	"github.com/xtls/xray-core/common/platform"
+	"github.com/xtls/xray-core/common/protocol"
 	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/inbound"
@@ -254,8 +254,8 @@ func (s *Server) runtimeOutboundTags(ctx context.Context) map[string]struct{} {
 func allowMethod(w http.ResponseWriter, r *http.Request, method string) bool {
 	if r.Method != method {
 		writeJSON(w, http.StatusMethodNotAllowed, APIErrorResponse{
-			Error:  "method not allowed",
-			Code:   "method_not_allowed",
+			Error:   "method not allowed",
+			Code:    "method_not_allowed",
 			Details: []string{"expected " + method + ", got " + r.Method},
 		})
 		return false
@@ -294,7 +294,7 @@ func (s *Server) handleGetStats(w http.ResponseWriter, r *http.Request) {
 	c := s.statsManager.GetCounter(name)
 	if c == nil {
 		if looksLikeRegexPattern(name) {
-		writeAPIErrorMsg(w, http.StatusBadRequest, "pattern looks like a regex; use GET /api/stats/query?pattern="+name)
+			writeAPIErrorMsg(w, http.StatusBadRequest, "pattern looks like a regex; use GET /api/stats/query?pattern="+name)
 			return
 		}
 		writeAPIErrorMsg(w, http.StatusNotFound, name+" not found")
@@ -382,16 +382,16 @@ func (s *Server) handleSysStats(w http.ResponseWriter, r *http.Request) {
 	runtime.ReadMemStats(&rtm)
 	uptime := time.Since(s.startTime)
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"uptime":        uint32(uptime.Seconds()),
+		"uptime":       uint32(uptime.Seconds()),
 		"numGoroutine": uint32(runtime.NumGoroutine()),
-		"alloc":         rtm.Alloc,
-		"totalAlloc":    rtm.TotalAlloc,
-		"sys":           rtm.Sys,
-		"mallocs":       rtm.Mallocs,
-		"frees":         rtm.Frees,
-		"liveObjects":   rtm.Mallocs - rtm.Frees,
-		"numGC":         rtm.NumGC,
-		"pauseTotalNs":  rtm.PauseTotalNs,
+		"alloc":        rtm.Alloc,
+		"totalAlloc":   rtm.TotalAlloc,
+		"sys":          rtm.Sys,
+		"mallocs":      rtm.Mallocs,
+		"frees":        rtm.Frees,
+		"liveObjects":  rtm.Mallocs - rtm.Frees,
+		"numGC":        rtm.NumGC,
+		"pauseTotalNs": rtm.PauseTotalNs,
 	})
 }
 
@@ -472,7 +472,7 @@ func (s *Server) handleGetAllOnlineUsersWithIps(w http.ResponseWriter, r *http.R
 		return
 	}
 	type userIps struct {
-		User string            `json:"email"`
+		User string           `json:"email"`
 		Ips  map[string]int64 `json:"ips"`
 	}
 	ch := make(chan userIps, len(users))
@@ -566,7 +566,7 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 	}
 	start := time.Now()
 	var body struct {
-		PreserveClients *bool            `json:"preserve_clients"`
+		PreserveClients *bool             `json:"preserve_clients"`
 		Inbounds        []json.RawMessage `json:"inbounds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1607,8 +1607,9 @@ func (s *Server) handleBalancerInfo(w http.ResponseWriter, r *http.Request) {
 
 // handleConfigExport writes a configuration file to disk.
 // Usage (multipart/form-data):
-//   file: uploaded config.json file (required)
-//   path: optional target path; if empty, uses server.configPath
+//
+//	file: uploaded config.json file (required)
+//	path: optional target path; if empty, uses server.configPath
 func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	if !allowMethod(w, r, http.MethodPost) {
 		return
@@ -1662,7 +1663,7 @@ func (s *Server) handleBalancerOverride(w http.ResponseWriter, r *http.Request) 
 	}
 	var body struct {
 		BalancerTag string `json:"balancer_tag"`
-		Target     string `json:"target"`
+		Target      string `json:"target"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeDecodeError(w, err)
@@ -1685,10 +1686,10 @@ func (s *Server) handleSourceIpBlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Outbound string   `json:"outbound"`
-		Inbound  string   `json:"inbound"`
-		RuleTag  string   `json:"rule_tag"`
-		Reset    bool     `json:"reset"`
+		Outbound  string   `json:"outbound"`
+		Inbound   string   `json:"inbound"`
+		RuleTag   string   `json:"rule_tag"`
+		Reset     bool     `json:"reset"`
 		SourceIPs []string `json:"source_ips"`
 	}
 	if body.RuleTag == "" {
