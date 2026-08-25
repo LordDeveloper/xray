@@ -48,6 +48,51 @@ func ValidateInboundBatch(raws []json.RawMessage) error {
 	return nil
 }
 
+// ValidateInboundBatchMeta validates inbound patches for preserve_clients edits.
+// Clients/users in the request are ignored; Build is checked with empty clients.
+func ValidateInboundBatchMeta(raws []json.RawMessage) error {
+	if len(raws) == 0 {
+		return errors.New("inbounds array is required")
+	}
+	seen := make(map[string]struct{}, len(raws))
+	for _, raw := range raws {
+		var m map[string]interface{}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return errors.New("invalid inbound json").Base(err)
+		}
+		tag, _ := m["tag"].(string)
+		if tag == "" {
+			return errors.New("inbound tag is required")
+		}
+		if _, dup := seen[tag]; dup {
+			return errors.New("duplicate inbound tag in request: ", tag)
+		}
+		seen[tag] = struct{}{}
+		if err := validateInboundMapMeta(m); err != nil {
+			return errors.New("inbound validation failed for ", tag).Base(err)
+		}
+	}
+	return nil
+}
+
+// CountSettingsClients counts clients (or users) inside inbound settings JSON.
+func CountSettingsClients(settings *json.RawMessage) (int, error) {
+	if settings == nil || len(*settings) == 0 {
+		return 0, nil
+	}
+	var sm map[string]interface{}
+	if err := json.Unmarshal(*settings, &sm); err != nil {
+		return 0, errors.New("invalid settings json").Base(err)
+	}
+	if clients, ok := sm["clients"].([]interface{}); ok {
+		return len(clients), nil
+	}
+	if users, ok := sm["users"].([]interface{}); ok {
+		return len(users), nil
+	}
+	return 0, nil
+}
+
 // ValidateOutboundBatch validates all outbounds and rejects duplicate tags in one request.
 func ValidateOutboundBatch(raws []json.RawMessage) error {
 	if len(raws) == 0 {

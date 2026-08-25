@@ -14,6 +14,13 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
+	"github.com/xtls/xray-core/features/inbound"
+	"github.com/xtls/xray-core/proxy"
+	"github.com/xtls/xray-core/proxy/shadowsocks"
+	"github.com/xtls/xray-core/proxy/shadowsocks_2022"
+	"github.com/xtls/xray-core/proxy/trojan"
+	vlessin "github.com/xtls/xray-core/proxy/vless/inbound"
+	vmessin "github.com/xtls/xray-core/proxy/vmess/inbound"
 )
 
 // localAlterInbound mirrors HandlerService.AlterInbound (see inbound_user_add.go in commands/all/api).
@@ -59,6 +66,85 @@ func (s *Server) protoReplaceInbound(ctx context.Context, built *core.InboundHan
 		return errors.New("remove inbound ", built.Tag).Base(err)
 	}
 	return s.protoAddInbound(ctx, built)
+}
+
+// protoReplaceInboundPreserveUsers rebuilds an inbound while copying live users onto the new handler config.
+// Callers must supply a built inbound whose ProxySettings clients/users may be empty or incomplete;
+// runtime users always win.
+func (s *Server) protoReplaceInboundPreserveUsers(ctx context.Context, built *core.InboundHandlerConfig) (int, error) {
+	if built == nil || built.Tag == "" {
+		return 0, errors.New("inbound tag is required")
+	}
+	handler, err := s.ihm.GetHandler(ctx, built.Tag)
+	if err != nil {
+		return 0, errors.New("inbound not found: ", built.Tag)
+	}
+	users, count, err := runtimeUsersFromHandler(ctx, handler)
+	if err != nil {
+		return 0, err
+	}
+	if err := injectUsersIntoInboundConfig(built, users); err != nil {
+		return 0, err
+	}
+	if err := s.protoRemoveInbound(ctx, built.Tag); err != nil {
+		return 0, errors.New("remove inbound ", built.Tag).Base(err)
+	}
+	if err := s.protoAddInbound(ctx, built); err != nil {
+		return count, errors.New("add inbound ", built.Tag).Base(err)
+	}
+	return count, nil
+}
+
+func runtimeUsersFromHandler(ctx context.Context, handler inbound.Handler) ([]*protocol.User, int, error) {
+	p, err := getInbound(handler)
+	if err != nil {
+		return nil, 0, err
+	}
+	um, ok := p.(proxy.UserManager)
+	if !ok {
+		return nil, 0, nil
+	}
+	mem := um.GetUsers(ctx)
+	out := make([]*protocol.User, 0, len(mem))
+	for _, mu := range mem {
+		if mu == nil {
+			continue
+		}
+		out = append(out, protocol.ToProtoUser(mu))
+	}
+	return out, len(out), nil
+}
+
+func injectUsersIntoInboundConfig(built *core.InboundHandlerConfig, users []*protocol.User) error {
+	if built == nil || built.ProxySettings == nil {
+		return errors.New("inbound proxy settings missing")
+	}
+	inst, err := built.ProxySettings.GetInstance()
+	if err != nil || inst == nil {
+		return errors.New("inbound proxy settings instance").Base(err)
+	}
+	switch ty := inst.(type) {
+	case *vmessin.Config:
+		ty.User = users
+		built.ProxySettings = cserial.ToTypedMessage(ty)
+	case *vlessin.Config:
+		ty.Users = users
+		built.ProxySettings = cserial.ToTypedMessage(ty)
+	case *trojan.ServerConfig:
+		ty.Users = users
+		built.ProxySettings = cserial.ToTypedMessage(ty)
+	case *shadowsocks.ServerConfig:
+		ty.Users = users
+		built.ProxySettings = cserial.ToTypedMessage(ty)
+	case *shadowsocks_2022.MultiUserServerConfig:
+		ty.Users = users
+		built.ProxySettings = cserial.ToTypedMessage(ty)
+	default:
+		if len(users) > 0 {
+			return errors.New("inbound type does not support preserving users")
+		}
+	}
+	return nil
 }
 
 func (s *Server) protoAddOutbound(ctx context.Context, built *core.OutboundHandlerConfig) error {

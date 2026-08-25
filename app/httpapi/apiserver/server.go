@@ -19,9 +19,8 @@ import (
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/protocol"
-	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/common/platform"
-	"github.com/xtls/xray-core/common/userconn"
+	cserial "github.com/xtls/xray-core/common/serial"
 	"github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/outbound"
@@ -92,6 +91,7 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 	mux.HandleFunc("/api/inbounds/list", s.handleListInbounds)
 	mux.HandleFunc("/api/inbounds/users/add", s.handleAddInboundUsers)
 	mux.HandleFunc("/api/inbounds/users/edit", s.handleEditInboundUsers)
+	mux.HandleFunc("/api/inbounds/users/upsert", s.handleUpsertInboundUsers)
 	mux.HandleFunc("/api/inbounds/users/remove", s.handleRemoveInboundUsers)
 	mux.HandleFunc("/api/inbounds/users", s.handleGetInboundUsers)
 	mux.HandleFunc("/api/inbounds/users/count", s.handleGetInboundUsersCount)
@@ -105,6 +105,7 @@ func New(instance *core.Instance, opt Options) (*Server, error) {
 	// Router / Rules / Balancer
 	mux.HandleFunc("/api/rules/add", s.handleAddRules)
 	mux.HandleFunc("/api/rules/edit", s.handleEditRules)
+	mux.HandleFunc("/api/rules/replace", s.handleReplaceRules)
 	mux.HandleFunc("/api/rules/remove", s.handleRemoveRules)
 	mux.HandleFunc("/api/rules/list", s.handleListRules)
 	mux.HandleFunc("/api/balancer/info", s.handleBalancerInfo)
@@ -563,8 +564,10 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 	if !allowMethod(w, r, http.MethodPost) {
 		return
 	}
+	start := time.Now()
 	var body struct {
-		Inbounds []json.RawMessage `json:"inbounds"`
+		PreserveClients *bool            `json:"preserve_clients"`
+		Inbounds        []json.RawMessage `json:"inbounds"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeDecodeError(w, err)
@@ -574,13 +577,94 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, errors.New("inbounds array is required"))
 		return
 	}
+	// Default true: format updates must not wipe clients. Set preserve_clients=false for full replace.
+	preserve := parseOptionalBool(body.PreserveClients, true)
+	ctx := r.Context()
+
+	if preserve {
+		if ConfigBridge.ValidateInboundBatchMeta != nil {
+			if err := ConfigBridge.ValidateInboundBatchMeta(body.Inbounds); err != nil {
+				writeValidationError(w, err)
+				return
+			}
+		}
+		type editedInbound struct {
+			Tag          string `json:"tag"`
+			ClientsCount int    `json:"clients_count"`
+		}
+		results := make([]editedInbound, 0, len(body.Inbounds))
+		for _, raw := range body.Inbounds {
+			var tagProbe struct {
+				Tag string `json:"tag"`
+			}
+			_ = json.Unmarshal(raw, &tagProbe)
+			if tagProbe.Tag == "" {
+				writeValidationError(w, errors.New("inbound tag is required"))
+				return
+			}
+			var buildRaw json.RawMessage
+			diskCount := 0
+			if s.configPath != "" && ConfigBridge.MergeInboundPreserveClients != nil {
+				merged, n, err := ConfigBridge.MergeInboundPreserveClients(s.configPath, raw)
+				if err != nil {
+					writeValidationError(w, err)
+					return
+				}
+				buildRaw, diskCount = merged, n
+			} else {
+				// No config file: strip clients from request and rely on runtime inject.
+				var m map[string]interface{}
+				if err := json.Unmarshal(raw, &m); err != nil {
+					writeDecodeError(w, err)
+					return
+				}
+				if settings, ok := m["settings"].(map[string]interface{}); ok {
+					settings["clients"] = []interface{}{}
+					delete(settings, "users")
+					m["settings"] = settings
+				}
+				b, err := json.Marshal(m)
+				if err != nil {
+					writeAPIError(w, err)
+					return
+				}
+				buildRaw = b
+			}
+			built, err := ConfigBridge.BuildInboundHandler(buildRaw)
+			if err != nil {
+				writeValidationError(w, err)
+				return
+			}
+			count, err := s.protoReplaceInboundPreserveUsers(ctx, built)
+			if err != nil {
+				writeAPIError(w, err)
+				return
+			}
+			if count == 0 && diskCount > 0 {
+				count = diskCount
+			}
+			results = append(results, editedInbound{Tag: tagProbe.Tag, ClientsCount: count})
+			logMutation(ctx, "inbounds/edit", tagProbe.Tag, count, &preserve, time.Since(start), 1, 0)
+		}
+		s.finishMutation(w, map[string]interface{}{
+			"status":   "ok",
+			"inbounds": results,
+		}, func() error {
+			if ConfigBridge.PatchConfigInboundsPreserveClients == nil {
+				return nil
+			}
+			_, err := ConfigBridge.PatchConfigInboundsPreserveClients(s.configPath, body.Inbounds)
+			return err
+		})
+		return
+	}
+
 	if ConfigBridge.ValidateInboundBatch != nil {
 		if err := ConfigBridge.ValidateInboundBatch(body.Inbounds); err != nil {
 			writeValidationError(w, err)
 			return
 		}
 	}
-	ctx := r.Context()
 	for _, raw := range body.Inbounds {
 		built, err := ConfigBridge.BuildInboundHandler(raw)
 		if err != nil {
@@ -591,6 +675,7 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 			writeAPIError(w, err)
 			return
 		}
+		logMutation(ctx, "inbounds/edit", built.Tag, 0, &preserve, time.Since(start), 1, 0)
 	}
 	s.finishMutation(w, map[string]string{"status": "ok"}, func() error {
 		if ConfigBridge.PatchConfigInbounds == nil {
@@ -658,91 +743,24 @@ func (s *Server) handleListInbounds(w http.ResponseWriter, r *http.Request) {
 
 // handleAddInboundUsers accepts only tag and settings (with clients); protocol is inferred from the existing inbound.
 func (s *Server) handleAddInboundUsers(w http.ResponseWriter, r *http.Request) {
-	if !allowMethod(w, r, http.MethodPost) {
-		return
-	}
-	var body struct {
-		Inbounds []struct {
-			Tag     string           `json:"tag"`
-			Settings *json.RawMessage `json:"settings"`
-		} `json:"inbounds"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeDecodeError(w, err)
-		return
-	}
-	if len(body.Inbounds) == 0 {
-		writeValidationError(w, errors.New("inbounds array is required"))
-		return
-	}
-	ctx := r.Context()
-	type userPatch struct {
-		tag      string
-		protocol string
-		settings *json.RawMessage
-	}
-	pending := make([]userPatch, 0, len(body.Inbounds))
-	for _, inb := range body.Inbounds {
-		if inb.Tag == "" {
-			writeValidationError(w, errors.New("inbound tag is required"))
-			return
-		}
-		if inb.Settings == nil {
-			writeValidationError(w, errors.New("settings is required for inbound ", inb.Tag))
-			return
-		}
-		handler, err := s.ihm.GetHandler(ctx, inb.Tag)
-		if err != nil {
-			writeAPIErrorStatus(w, http.StatusNotFound, errors.New("inbound "+inb.Tag+": "+err.Error()))
-			return
-		}
-		protocol, err := getInboundProtocol(handler)
-		if err != nil {
-			writeValidationError(w, errors.New("inbound "+inb.Tag+": "+err.Error()))
-			return
-		}
-		if ConfigBridge.ValidateInboundUserSettings != nil {
-			if err := ConfigBridge.ValidateInboundUserSettings(protocol, inb.Settings); err != nil {
-				writeValidationError(w, err)
-				return
-			}
-		}
-		pending = append(pending, userPatch{tag: inb.Tag, protocol: protocol, settings: inb.Settings})
-	}
-	added := 0
-	var filePatches []InboundUserFilePatch
-	for _, inb := range pending {
-		built, err := ConfigBridge.BuildInboundProxyOnly(inb.tag, inb.protocol, inb.settings)
-		if err != nil {
-			writeValidationError(w, errors.New("build settings for "+inb.tag+": "+err.Error()))
-			return
-		}
-		users := extractInboundUsers(built)
-		for _, user := range users {
-			if user.Email == "" {
-				continue
-			}
-			if err := s.protoAlterAddUser(ctx, inb.tag, user); err != nil {
-				writeAPIError(w, err)
-				return
-			}
-			added++
-		}
-		filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
-	}
-	s.finishMutation(w, map[string]int{"added_users": added}, func() error {
-		if ConfigBridge.PatchConfigInboundUsers == nil || len(filePatches) == 0 {
-			return nil
-		}
-		return ConfigBridge.PatchConfigInboundUsers(s.configPath, filePatches)
-	})
+	s.handleInboundUsersMutation(w, r, "add")
 }
 
 func (s *Server) handleEditInboundUsers(w http.ResponseWriter, r *http.Request) {
+	s.handleInboundUsersMutation(w, r, "edit")
+}
+
+func (s *Server) handleUpsertInboundUsers(w http.ResponseWriter, r *http.Request) {
+	s.handleInboundUsersMutation(w, r, "upsert")
+}
+
+func (s *Server) handleInboundUsersMutation(w http.ResponseWriter, r *http.Request, mode string) {
 	if !allowMethod(w, r, http.MethodPost) {
 		return
 	}
+	start := time.Now()
 	var body struct {
+		Atomic   bool `json:"atomic"`
 		Inbounds []struct {
 			Tag      string           `json:"tag"`
 			Settings *json.RawMessage `json:"settings"`
@@ -756,6 +774,15 @@ func (s *Server) handleEditInboundUsers(w http.ResponseWriter, r *http.Request) 
 		writeValidationError(w, errors.New("inbounds array is required"))
 		return
 	}
+	totalClients, err := countRequestClients(body.Inbounds)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	if totalClients > maxBulkUsersPerRequest {
+		writeBulkTooLarge(w, totalClients)
+		return
+	}
 	ctx := r.Context()
 	type userPatch struct {
 		tag      string
@@ -790,28 +817,42 @@ func (s *Server) handleEditInboundUsers(w http.ResponseWriter, r *http.Request) 
 		}
 		pending = append(pending, userPatch{tag: inb.Tag, protocol: protocol, settings: inb.Settings})
 	}
-	updated := 0
+
+	agg := bulkUserResult{}
 	var filePatches []InboundUserFilePatch
 	for _, inb := range pending {
-		built, err := ConfigBridge.BuildInboundProxyOnly(inb.tag, inb.protocol, inb.settings)
-		if err != nil {
-			writeValidationError(w, errors.New("build settings for "+inb.tag+": "+err.Error()))
+		part := s.applyUserBatch(ctx, inb.tag, inb.protocol, inb.settings, mode, body.Atomic)
+		agg.Succeeded += part.Succeeded
+		agg.Failed += part.Failed
+		agg.Errors = append(agg.Errors, part.Errors...)
+		if part.Succeeded > 0 {
+			filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
+		}
+		if body.Atomic && part.Failed > 0 {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"succeeded": agg.Succeeded,
+				"failed":    agg.Failed,
+				"errors":    agg.Errors,
+				"atomic":    true,
+			})
+			logMutation(ctx, "inbounds/users/"+mode, inb.tag, totalClients, nil, time.Since(start), agg.Succeeded, agg.Failed)
 			return
 		}
-		users := extractInboundUsers(built)
-		for _, user := range users {
-			if user.Email == "" {
-				continue
-			}
-			if err := s.protoReplaceUser(ctx, inb.tag, user); err != nil {
-				writeAPIError(w, err)
-				return
-			}
-			updated++
-		}
-		filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
+		logMutation(ctx, "inbounds/users/"+mode, inb.tag, part.Succeeded+part.Failed, nil, time.Since(start), part.Succeeded, part.Failed)
 	}
-	s.finishMutation(w, map[string]int{"updated_users": updated}, func() error {
+	switch mode {
+	case "add", "upsert":
+		agg.AddedUsers = agg.Succeeded
+	case "edit":
+		agg.UpdatedUsers = agg.Succeeded
+	}
+	s.finishMutation(w, map[string]interface{}{
+		"succeeded":      agg.Succeeded,
+		"failed":         agg.Failed,
+		"errors":         agg.Errors,
+		"added_users":    agg.AddedUsers,
+		"updated_users":  agg.UpdatedUsers,
+	}, func() error {
 		if ConfigBridge.PatchConfigInboundUsers == nil || len(filePatches) == 0 {
 			return nil
 		}
@@ -847,7 +888,9 @@ func (s *Server) handleRemoveInboundUsers(w http.ResponseWriter, r *http.Request
 	if !allowMethod(w, r, http.MethodPost) {
 		return
 	}
+	start := time.Now()
 	var body struct {
+		Atomic bool     `json:"atomic"`
 		Tag    string   `json:"tag"`
 		Emails []string `json:"emails"`
 	}
@@ -857,6 +900,10 @@ func (s *Server) handleRemoveInboundUsers(w http.ResponseWriter, r *http.Request
 	}
 	if body.Tag == "" || len(body.Emails) == 0 {
 		writeValidationError(w, errors.New("tag and emails are required"))
+		return
+	}
+	if len(body.Emails) > maxBulkUsersPerRequest {
+		writeBulkTooLarge(w, len(body.Emails))
 		return
 	}
 	if ConfigBridge.ValidateNonEmptyEmails != nil {
@@ -870,22 +917,42 @@ func (s *Server) handleRemoveInboundUsers(w http.ResponseWriter, r *http.Request
 		writeAPIErrorStatus(w, http.StatusNotFound, err)
 		return
 	}
-	removed := 0
-	dropped := 0
+	res := s.removeUsersPartial(ctx, body.Tag, body.Emails, body.Atomic)
+	logMutation(ctx, "inbounds/users/remove", body.Tag, len(body.Emails), nil, time.Since(start), res.Succeeded, res.Failed)
+	if body.Atomic && res.Failed > 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"succeeded":           res.Succeeded,
+			"failed":              res.Failed,
+			"errors":              res.Errors,
+			"removed_users":       res.RemovedUsers,
+			"dropped_connections": res.DroppedConns,
+			"atomic":              true,
+		})
+		return
+	}
+	succeededEmails := make([]string, 0, res.Succeeded)
+	failedSet := make(map[string]struct{}, len(res.Errors))
+	for _, e := range res.Errors {
+		if e.Email != "" {
+			failedSet[e.Email] = struct{}{}
+		}
+	}
 	for _, email := range body.Emails {
-		dropped += userconn.Kick(body.Tag, email)
-		if err := s.protoAlterRemoveUser(ctx, body.Tag, email); err == nil {
-			removed++
+		if _, bad := failedSet[email]; !bad {
+			succeededEmails = append(succeededEmails, email)
 		}
 	}
 	s.finishMutation(w, map[string]interface{}{
-		"removed_users":       removed,
-		"dropped_connections": dropped,
+		"succeeded":           res.Succeeded,
+		"failed":              res.Failed,
+		"errors":              res.Errors,
+		"removed_users":       res.RemovedUsers,
+		"dropped_connections": res.DroppedConns,
 	}, func() error {
-		if ConfigBridge.PatchConfigInboundUsersRemove == nil {
+		if ConfigBridge.PatchConfigInboundUsersRemove == nil || len(succeededEmails) == 0 {
 			return nil
 		}
-		return ConfigBridge.PatchConfigInboundUsersRemove(s.configPath, body.Tag, body.Emails)
+		return ConfigBridge.PatchConfigInboundUsersRemove(s.configPath, body.Tag, succeededEmails)
 	})
 }
 
@@ -1250,6 +1317,82 @@ func (s *Server) handleEditRules(w http.ResponseWriter, r *http.Request) {
 		}
 		return ConfigBridge.PatchConfigRulesEdit(s.configPath, ruleTag, ruleInput)
 	})
+}
+
+func (s *Server) handleReplaceRules(w http.ResponseWriter, r *http.Request) {
+	if !allowMethod(w, r, http.MethodPost) {
+		return
+	}
+	start := time.Now()
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeDecodeError(w, err)
+		return
+	}
+	routing, rulesCount, err := normalizeReplaceRulesBody(rawBody)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	if ConfigBridge.ValidateRoutingRules != nil {
+		if err := ConfigBridge.ValidateRoutingRules(routing); err != nil {
+			writeValidationError(w, err)
+			return
+		}
+	}
+	config, err := ConfigBridge.BuildRouterRules(routing)
+	if err != nil {
+		writeValidationError(w, err)
+		return
+	}
+	tmsg := cserial.ToTypedMessage(config)
+	if tmsg == nil {
+		writeAPIErrorMsg(w, http.StatusInternalServerError, "failed to build TypedMessage")
+		return
+	}
+	// shouldAppend=false → ReloadRules replaces the entire rule set atomically.
+	if err := s.protoAddRule(r.Context(), tmsg, false); err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	logMutation(r.Context(), "rules/replace", "", rulesCount, nil, time.Since(start), rulesCount, 0)
+	s.finishMutation(w, map[string]interface{}{
+		"status": "ok",
+		"count":  rulesCount,
+	}, func() error {
+		if ConfigBridge.PatchConfigRulesReplace == nil {
+			return nil
+		}
+		return ConfigBridge.PatchConfigRulesReplace(s.configPath, routing)
+	})
+}
+
+func normalizeReplaceRulesBody(raw []byte) (json.RawMessage, int, error) {
+	if len(raw) == 0 {
+		return nil, 0, errors.New("request body is required")
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return nil, 0, errors.New("invalid json").Base(err)
+	}
+	var routing json.RawMessage
+	if v, ok := probe["routing"]; ok && len(v) > 0 {
+		routing = v
+	} else if _, ok := probe["rules"]; ok {
+		routing = raw
+	} else {
+		return nil, 0, errors.New("rules or routing.rules is required")
+	}
+	var rc struct {
+		Rules []json.RawMessage `json:"rules"`
+	}
+	if err := json.Unmarshal(routing, &rc); err != nil {
+		return nil, 0, errors.New("invalid routing json").Base(err)
+	}
+	if len(rc.Rules) == 0 {
+		return nil, 0, errors.New("routing.rules is required")
+	}
+	return routing, len(rc.Rules), nil
 }
 
 func wrapSingleRoutingRule(rule json.RawMessage) (json.RawMessage, error) {
