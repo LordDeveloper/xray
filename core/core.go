@@ -13,23 +13,32 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strconv"
+	"strings"
 
 	"github.com/xtls/xray-core/common/serial"
 )
 
 var (
-	Version_x byte = 26
-	Version_y byte = 6
-	Version_z byte = 1
+	// Default matches the latest fork release tag (vX.Y.Z). CI overrides via versionOverride.
+	Version_x byte = 1
+	Version_y byte = 0
+	Version_z byte = 7
 )
 
 var (
 	build    = "Custom"
 	codename = "Xray, Penetrates Everything."
 	intro    = "A unified platform for anti-censorship."
+	// versionOverride is set at link time from the git release tag, e.g.:
+	// -X github.com/xtls/xray-core/core.versionOverride=1.0.7
+	versionOverride = ""
 )
 
 func init() {
+	if versionOverride != "" {
+		applyVersionOverride(versionOverride)
+	}
 	// Manually injected
 	if build != "Custom" {
 		return
@@ -55,6 +64,28 @@ func init() {
 	if isDirty && foundBuild {
 		build += "-dirty"
 	}
+}
+
+func applyVersionOverride(raw string) {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "v")
+	raw = strings.TrimPrefix(raw, "V")
+	parts := strings.Split(raw, ".")
+	if len(parts) < 3 {
+		return
+	}
+	x, errX := strconv.Atoi(parts[0])
+	y, errY := strconv.Atoi(parts[1])
+	z, errZ := strconv.Atoi(parts[2])
+	if errX != nil || errY != nil || errZ != nil {
+		return
+	}
+	if x < 0 || x > 255 || y < 0 || y > 255 || z < 0 || z > 255 {
+		return
+	}
+	Version_x = byte(x)
+	Version_y = byte(y)
+	Version_z = byte(z)
 }
 
 // Version returns Xray's version as a string, in the form of "x.y.z" where x, y and z are numbers.

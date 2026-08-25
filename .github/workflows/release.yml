@@ -106,13 +106,26 @@ jobs:
         run: |
           mkdir -p build_assets
           COMMID=$(git describe --always --dirty)
+          # Prefer release tag (v1.0.7 → 1.0.7); fallback to latest tag / defaults in source.
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            TAG_VERSION="${GITHUB_REF_NAME#v}"
+          else
+            TAG_VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)"
+          fi
+          LDFLAGS="-X github.com/xtls/xray-core/core.build=${COMMID} -s -w -buildid="
+          if [[ -n "${TAG_VERSION}" && "${TAG_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "Embedding core version from tag: ${TAG_VERSION}"
+            LDFLAGS="${LDFLAGS} -X github.com/xtls/xray-core/core.versionOverride=${TAG_VERSION}"
+          else
+            echo "No semver tag detected; using Version_* defaults from source"
+          fi
           echo 'Building Xray for Linux...'
           if [[ ${GOARCH} == 'mips' || ${GOARCH} == 'mipsle' ]]; then
-            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMID} -s -w -buildid=" -v ./main
+            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="${LDFLAGS}" -v ./main
             echo 'Building soft-float Xray for MIPS/MIPSLE 32-bit...'
-            GOMIPS=softfloat go build -o build_assets/xray_softfloat -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMID} -s -w -buildid=" -v ./main
+            GOMIPS=softfloat go build -o build_assets/xray_softfloat -trimpath -buildvcs=false -gcflags="-l=4" -ldflags="${LDFLAGS}" -v ./main
           else
-            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="-X github.com/xtls/xray-core/core.build=${COMMID} -s -w -buildid=" -v ./main
+            go build -o build_assets/xray -trimpath -buildvcs=false -gcflags="all=-l=4" -ldflags="${LDFLAGS}" -v ./main
           fi
 
       - name: Restore Geodat Cache
