@@ -188,3 +188,46 @@ func (s *Server) removeUsersPartial(ctx context.Context, tag string, emails []st
 	res.RemovedUsers = res.Succeeded
 	return res
 }
+
+func filterSettingsClientsByErrors(settings *json.RawMessage, errs []userOpError) (*json.RawMessage, error) {
+	if settings == nil {
+		return settings, nil
+	}
+	failed := make(map[string]struct{}, len(errs))
+	for _, e := range errs {
+		if e.Email != "" {
+			failed[e.Email] = struct{}{}
+		}
+	}
+	if len(failed) == 0 {
+		return settings, nil
+	}
+	var sm map[string]interface{}
+	if err := json.Unmarshal(*settings, &sm); err != nil {
+		return nil, err
+	}
+	clients, ok := sm["clients"].([]interface{})
+	if !ok {
+		return settings, nil
+	}
+	kept := make([]interface{}, 0, len(clients))
+	for _, cl := range clients {
+		cm, ok := cl.(map[string]interface{})
+		if !ok {
+			kept = append(kept, cl)
+			continue
+		}
+		email, _ := cm["email"].(string)
+		if _, bad := failed[email]; bad {
+			continue
+		}
+		kept = append(kept, cl)
+	}
+	sm["clients"] = kept
+	raw, err := json.Marshal(sm)
+	if err != nil {
+		return nil, err
+	}
+	out := json.RawMessage(raw)
+	return &out, nil
+}

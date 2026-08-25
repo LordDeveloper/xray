@@ -582,11 +582,25 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	if preserve {
-		if ConfigBridge.ValidateInboundBatchMeta != nil {
-			if err := ConfigBridge.ValidateInboundBatchMeta(body.Inbounds); err != nil {
-				writeValidationError(w, err)
+		// Patches may omit clients / full settings; validate after merge with existing inbound.
+		seen := make(map[string]struct{}, len(body.Inbounds))
+		for _, raw := range body.Inbounds {
+			var tagProbe struct {
+				Tag string `json:"tag"`
+			}
+			if err := json.Unmarshal(raw, &tagProbe); err != nil {
+				writeDecodeError(w, err)
 				return
 			}
+			if tagProbe.Tag == "" {
+				writeValidationError(w, errors.New("inbound tag is required"))
+				return
+			}
+			if _, dup := seen[tagProbe.Tag]; dup {
+				writeValidationError(w, errors.New("duplicate inbound tag in request: ", tagProbe.Tag))
+				return
+			}
+			seen[tagProbe.Tag] = struct{}{}
 		}
 		type editedInbound struct {
 			Tag          string `json:"tag"`
@@ -598,10 +612,6 @@ func (s *Server) handleEditInbounds(w http.ResponseWriter, r *http.Request) {
 				Tag string `json:"tag"`
 			}
 			_ = json.Unmarshal(raw, &tagProbe)
-			if tagProbe.Tag == "" {
-				writeValidationError(w, errors.New("inbound tag is required"))
-				return
-			}
 			var buildRaw json.RawMessage
 			diskCount := 0
 			if s.configPath != "" && ConfigBridge.MergeInboundPreserveClients != nil {
@@ -818,7 +828,7 @@ func (s *Server) handleInboundUsersMutation(w http.ResponseWriter, r *http.Reque
 		pending = append(pending, userPatch{tag: inb.Tag, protocol: protocol, settings: inb.Settings})
 	}
 
-	agg := bulkUserResult{}
+	agg := bulkUserResult{Errors: []userOpError{}}
 	var filePatches []InboundUserFilePatch
 	for _, inb := range pending {
 		part := s.applyUserBatch(ctx, inb.tag, inb.protocol, inb.settings, mode, body.Atomic)
@@ -826,7 +836,13 @@ func (s *Server) handleInboundUsersMutation(w http.ResponseWriter, r *http.Reque
 		agg.Failed += part.Failed
 		agg.Errors = append(agg.Errors, part.Errors...)
 		if part.Succeeded > 0 {
-			filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: inb.settings})
+			patchSettings := inb.settings
+			if part.Failed > 0 {
+				if filtered, err := filterSettingsClientsByErrors(inb.settings, part.Errors); err == nil {
+					patchSettings = filtered
+				}
+			}
+			filePatches = append(filePatches, InboundUserFilePatch{Tag: inb.tag, Settings: patchSettings})
 		}
 		if body.Atomic && part.Failed > 0 {
 			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
@@ -846,13 +862,17 @@ func (s *Server) handleInboundUsersMutation(w http.ResponseWriter, r *http.Reque
 	case "edit":
 		agg.UpdatedUsers = agg.Succeeded
 	}
-	s.finishMutation(w, map[string]interface{}{
-		"succeeded":      agg.Succeeded,
-		"failed":         agg.Failed,
-		"errors":         agg.Errors,
-		"added_users":    agg.AddedUsers,
-		"updated_users":  agg.UpdatedUsers,
-	}, func() error {
+	resp := map[string]interface{}{
+		"succeeded": agg.Succeeded,
+		"failed":    agg.Failed,
+		"errors":    agg.Errors,
+	}
+	if mode == "edit" {
+		resp["updated_users"] = agg.UpdatedUsers
+	} else {
+		resp["added_users"] = agg.AddedUsers
+	}
+	s.finishMutation(w, resp, func() error {
 		if ConfigBridge.PatchConfigInboundUsers == nil || len(filePatches) == 0 {
 			return nil
 		}

@@ -524,21 +524,56 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/add' \
 
 ### Edit inbounds
 
-Replaces existing inbounds by tag (runtime: remove + add; config file: upsert). Each `tag` must already exist.
+Updates existing inbounds by tag.
 
 | Method | Path                |
 |--------|---------------------|
 | POST   | `/api/inbounds/edit` |
 
-**Request body:** Same as add — full inbound object(s) with existing `tag`.
+**Request body:**
+
+```json
+{
+  "preserve_clients": true,
+  "inbounds": [
+    {
+      "tag": "vless-in",
+      "listen": "0.0.0.0",
+      "port": 443,
+      "protocol": "vless",
+      "streamSettings": { "network": "ws", "wsSettings": { "path": "/ws" } },
+      "sniffing": { "enabled": true, "destOverride": ["http", "tls"] },
+      "settings": {
+        "decryption": "none",
+        "fallbacks": []
+      }
+    }
+  ]
+}
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `preserve_clients` | `true` | When `true`, keep runtime + disk clients; only update listen/port/protocol/streamSettings/sniffing/allocate and non-client `settings` fields. Request `settings.clients` is ignored. When `false`, full replace (remove+add) using the request body as-is (legacy). |
+
+**Recommended for panel format updates:** always send `"preserve_clients": true` and omit `clients` (or leave them empty). Sync users separately via `/api/inbounds/users/*`.
 
 ```bash
 curl -X POST 'http://127.0.0.1:8080/api/inbounds/edit' \
   -H 'Content-Type: application/json' \
-  -d '{"inbounds":[{"tag":"vless-in","protocol":"vless","listen":"0.0.0.0","port":443,"settings":{"clients":[],"decryption":"none"}}]}'
+  -d '{"preserve_clients":true,"inbounds":[{"tag":"vless-in","port":443,"streamSettings":{"network":"ws","wsSettings":{"path":"/ws"}}}]}'
 ```
 
-**Success response (200):** `{"status":"ok"}`
+**Success response (200) with `preserve_clients=true`:**
+
+```json
+{
+  "status": "ok",
+  "inbounds": [{ "tag": "vless-in", "clients_count": 5000 }]
+}
+```
+
+**Success response (200) with `preserve_clients=false`:** `{"status":"ok"}`
 
 ---
 
@@ -620,11 +655,29 @@ If validation or write fails, runtime changes still apply but the response is **
 
 `GET /api/inbounds` and `GET /api/outbounds` return entries from the config file for handlers currently loaded at runtime (full JSON as stored, including `streamSettings`, `settings.clients`, etc.).
 
-Mutations that auto-save: `POST /api/inbounds/add`, `POST /api/inbounds/edit`, `POST /api/inbounds/remove`, `POST /api/inbounds/users/add`, `POST /api/inbounds/users/edit`, `POST /api/inbounds/users/remove`, `POST /api/outbounds/add`, `POST /api/outbounds/edit`, `POST /api/outbounds/remove`, `POST /api/rules/add`, `POST /api/rules/edit`, `POST /api/rules/remove`.
+Mutations that auto-save: `POST /api/inbounds/add`, `POST /api/inbounds/edit`, `POST /api/inbounds/remove`, `POST /api/inbounds/users/add`, `POST /api/inbounds/users/edit`, `POST /api/inbounds/users/upsert`, `POST /api/inbounds/users/remove`, `POST /api/outbounds/add`, `POST /api/outbounds/edit`, `POST /api/outbounds/remove`, `POST /api/rules/add`, `POST /api/rules/edit`, `POST /api/rules/replace`, `POST /api/rules/remove`.
 
 ---
 
 ## Inbound Users
+
+Bulk user mutations share these rules:
+
+- Max **200** clients/emails per request → otherwise **413** `payload_too_large`
+- Default is **partial success** (one bad user does not fail the whole batch)
+- Set `"atomic": true` to stop on first error (add/upsert roll back users applied in that request)
+- Response shape:
+
+```json
+{
+  "succeeded": 190,
+  "failed": 10,
+  "errors": [{ "email": "bad@example.com", "message": "..." }],
+  "added_users": 190
+}
+```
+
+(`added_users` / `updated_users` / `removed_users` kept for backward compatibility.)
 
 ### Add users to inbounds
 
@@ -638,6 +691,7 @@ Adds users to existing inbounds. Only **tag** and **settings** (with `clients`) 
 
 ```json
 {
+  "atomic": false,
   "inbounds": [
     {
       "tag": "vless-in",
@@ -658,6 +712,7 @@ Adds users to existing inbounds. Only **tag** and **settings** (with `clients`) 
 |----------|----------|-------------|
 | `tag`    | Yes      | Inbound tag to add users to (must already exist). |
 | `settings` | Yes    | Protocol settings; must include `clients` (or protocol-specific user list). |
+| `atomic` | No       | If `true`, fail whole batch on first error. Default `false`. |
 
 Supported inbounds: VLESS, VMess, Trojan, Shadowsocks, Shadowsocks 2022.
 
@@ -669,19 +724,19 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/add' \
   -d '{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx","email":"user@example.com"}]}}]}'
 ```
 
-**Success response (200):** `{"added_users":1}`
+**Success response (200):** `{"succeeded":1,"failed":0,"errors":[],"added_users":1}`
 
 ---
 
 ### Edit inbound users
 
-Updates existing users by email (runtime: remove + add; config: merge/replace client by email). Each client `email` must already exist on that inbound.
+Updates existing users by email (runtime: remove + add; config: merge/replace client by email).
 
 | Method | Path                         |
 |--------|------------------------------|
 | POST   | `/api/inbounds/users/edit`   |
 
-**Request body:** Same shape as add — `inbounds[]` with `tag` and `settings.clients`.
+**Request body:** Same shape as add — `inbounds[]` with `tag` and `settings.clients`. Optional `atomic`.
 
 ```bash
 curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/edit' \
@@ -689,7 +744,27 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/edit' \
   -d '{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"new-uuid","email":"user@example.com","flow":"xtls-rprx-vision"}]}}]}'
 ```
 
-**Success response (200):** `{"updated_users":1}`
+**Success response (200):** `{"succeeded":1,"failed":0,"errors":[],"updated_users":1}`
+
+---
+
+### Upsert inbound users
+
+Adds each client if the email is new; otherwise updates it (panel sync). Prefer chunks of 100–200 clients.
+
+| Method | Path                           |
+|--------|--------------------------------|
+| POST   | `/api/inbounds/users/upsert`   |
+
+**Request body:** Same as add.
+
+```bash
+curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/upsert' \
+  -H 'Content-Type: application/json' \
+  -d '{"inbounds":[{"tag":"vless-in","settings":{"clients":[{"id":"uuid","email":"user@example.com"}]}}]}'
+```
+
+**Success response (200):** `{"succeeded":1,"failed":0,"errors":[],"added_users":1}`
 
 ---
 
@@ -705,6 +780,7 @@ Removes users from a single inbound by email.
 
 ```json
 {
+  "atomic": false,
   "tag": "vless-in",
   "emails": ["user1@example.com", "user2@example.com"]
 }
@@ -713,7 +789,8 @@ Removes users from a single inbound by email.
 | Field   | Type     | Required | Description                    |
 |---------|----------|----------|--------------------------------|
 | `tag`   | string   | Yes      | Inbound tag.                   |
-| `emails`| string[] | Yes      | User emails to remove.         |
+| `emails`| string[] | Yes      | User emails to remove (max 200). |
+| `atomic`| bool     | No       | Stop on first error. Default false. |
 
 **Example:**
 
@@ -723,7 +800,7 @@ curl -X POST 'http://127.0.0.1:8080/api/inbounds/users/remove' \
   -d '{"tag":"vless-in","emails":["user@example.com"]}'
 ```
 
-**Success response (200):** `{"removed_users":1,"dropped_connections":2}` — active TCP sessions for that user are closed immediately.
+**Success response (200):** `{"succeeded":1,"failed":0,"errors":[],"removed_users":1,"dropped_connections":2}` — active TCP sessions for that user are closed immediately.
 
 ---
 
