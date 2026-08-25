@@ -4,14 +4,10 @@ on:
   workflow_dispatch:
   release:
     types: [published]
-  push:
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
   check-assets:
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     steps:
       - name: Restore Geodat Cache
         uses: actions/cache/restore@v5
@@ -19,48 +15,31 @@ jobs:
           path: resources
           key: xray-geodat-
 
-      - name: Check Assets Existence
-        id: check-assets
+      - name: Ensure geoip/geosite assets
         run: |
-          [ -d 'resources' ] || mkdir resources
-          LIST=('geoip.dat' 'geosite.dat')
-          for FILE_NAME in "${LIST[@]}"
-          do
-            echo -e "Checking ${FILE_NAME}..."
+          mkdir -p resources
+          BASE='https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release'
+          for FILE_NAME in geoip.dat geosite.dat; do
             if [ -s "./resources/${FILE_NAME}" ]; then
-              echo -e "${FILE_NAME} exists."
+              echo "${FILE_NAME} exists."
             else
-              echo -e "${FILE_NAME} does not exist."
-              echo "missing=true" >> $GITHUB_OUTPUT
-              break
+              echo "Downloading ${FILE_NAME}..."
+              curl -fsSL -o "./resources/${FILE_NAME}" "${BASE}/${FILE_NAME}"
             fi
           done
 
-      - name: Trigger Asset Update Workflow if Assets Missing
-        if: steps.check-assets.outputs.missing == 'true'
-        uses: actions/github-script@v9
+      - name: Save Geodat Cache
+        uses: actions/cache/save@v5
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const { owner, repo } = context.repo;
-            await github.rest.actions.createWorkflowDispatch({
-              owner,
-              repo,
-              workflow_id: 'scheduled-assets-update.yml',
-              ref: context.ref
-            });
-            console.log('Triggered scheduled-assets-update.yml due to missing assets on branch:', context.ref);
-
-      - name: Sleep for 90 seconds if Assets Missing
-        if: steps.check-assets.outputs.missing == 'true'
-        run: sleep 90
+          path: resources
+          key: xray-geodat-${{ github.run_id }}
 
   build:
     needs: check-assets
     permissions:
       contents: write
     strategy:
-      # Linux only (VPS / server targets). No Windows/macOS/BSD/Android.
+      # Linux only (VPS / server targets).
       matrix:
         include:
           - goos: linux
@@ -99,7 +78,6 @@ jobs:
       fail-fast: false
 
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
     env:
       GOOS: ${{ matrix.goos }}
       GOARCH: ${{ matrix.goarch }}
@@ -145,6 +123,13 @@ jobs:
 
       - name: Add additional assets into package
         run: |
+          mkdir -p resources
+          BASE='https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release'
+          for FILE_NAME in geoip.dat geosite.dat; do
+            if [ ! -s "./resources/${FILE_NAME}" ]; then
+              curl -fsSL -o "./resources/${FILE_NAME}" "${BASE}/${FILE_NAME}"
+            fi
+          done
           mv -f resources/geo* build_assets/
 
       - name: Copy README.md & LICENSE
