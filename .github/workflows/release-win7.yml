@@ -1,12 +1,9 @@
 name: Build and Release for Windows 7
 
+# Disabled for this fork: releases only build Linux (see release.yml).
+# Keep workflow_dispatch in case a one-off Windows 7 build is needed.
 on:
   workflow_dispatch:
-  release:
-    types: [published]
-  push:
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
   check-assets:
