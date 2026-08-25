@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Restore Geodat Cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: resources
           key: xray-geodat-
@@ -29,7 +29,7 @@ jobs:
           done
 
       - name: Save Geodat Cache
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: resources
           key: xray-geodat-${{ github.run_id }}
@@ -116,7 +116,7 @@ jobs:
           fi
 
       - name: Restore Geodat Cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: resources
           key: xray-geodat-
