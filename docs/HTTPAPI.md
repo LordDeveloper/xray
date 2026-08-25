@@ -8,6 +8,8 @@ The HTTP API provides a REST/JSON interface to control and inspect a running Xra
 
 **Interactive docs:** When the API is running, open `http://<listen>/docs/` for a searchable reference with live **Try it** requests, dark/light theme, and all endpoints (including add/edit/remove).
 
+**Integrator cheat-sheet (Agent / Panel):** see [`HTTPAPI_ROUTES.md`](./HTTPAPI_ROUTES.md) — all routes, provision flow (`preserve_clients` → users upsert chunks → `rules/replace`), and who owns what.
+
 ---
 
 ## Table of Contents
