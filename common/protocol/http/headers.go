@@ -10,30 +10,36 @@ import (
 	"github.com/xtls/xray-core/common/net"
 )
 
-// ApplyTrustedXForwardedFor returns remoteAddr overridden by X-Forwarded-For only when a configured trusted header is present.
+// HeaderReader reads HTTP-style header values.
+type HeaderReader interface {
+	Get(key string) string
+	Values(key string) []string
+}
+
+// ApplyTrustedXForwardedFor resolves remoteAddr from sockopt.trustedXForwardedFor header names.
+// Each entry is a header to inspect in order. Proxy/CDN addresses such as Cloudflare are skipped.
+// When the list is empty the connection address is returned unchanged.
 func ApplyTrustedXForwardedFor(header http.Header, trusted []string, remoteAddr net.Addr) net.Addr {
-	value := header.Get("X-Forwarded-For")
-	if value == "" {
+	if len(trusted) == 0 {
+		if header.Get("X-Forwarded-For") != "" {
+			errors.LogWarning(context.Background(), `received "X-Forwarded-For" from `, remoteAddr, ` but "sockopt.trustedXForwardedFor" is not configured; ignoring it and using the real remote address`)
+		}
 		return remoteAddr
 	}
-	for _, t := range trusted {
-		if len(header.Values(t)) > 0 {
-			if idx := strings.IndexByte(value, ','); idx >= 0 {
-				value = value[:idx]
-			}
-			if addr := net.ParseAddress(value); addr.Family().IsIP() {
-				return &net.TCPAddr{
-					IP:   addr.IP(),
-					Port: 0,
-				}
-			}
-			return remoteAddr
-		}
+
+	resolver := NewRemoteAddrResolver(trusted)
+	resolved := resolver.Resolve(header, remoteAddr)
+	if resolved != remoteAddr {
+		return resolved
 	}
-	if len(trusted) == 0 {
-		errors.LogWarning(context.Background(), `received "X-Forwarded-For" from `, remoteAddr, ` but "sockopt.trustedXForwardedFor" is not configured; ignoring it and using the real remote address`)
-	} else {
-		errors.LogError(context.Background(), `ignored potentially forged "X-Forwarded-For" from `, remoteAddr, `: `, value)
+
+	if header.Get("X-Forwarded-For") != "" {
+		for _, name := range trusted {
+			if strings.EqualFold(name, "X-Forwarded-For") {
+				return remoteAddr
+			}
+		}
+		errors.LogDebug(context.Background(), `no usable client IP found in configured remote address headers from `, remoteAddr)
 	}
 	return remoteAddr
 }

@@ -25,7 +25,7 @@ func TestRemoteAddrFromContext(t *testing.T) {
 		{
 			name:                  "trust X-Forwarded-For with trusted marker",
 			metadata:              metadata.Pairs("X-Forwarded-For", "4.4.4.4", "X-Trusted-CDN", "1"),
-			trustedXForwardedFor:  []string{"X-Trusted-CDN"},
+			trustedXForwardedFor:  []string{"X-Trusted-CDN", "X-Forwarded-For"},
 			expectedRemoteAddress: "4.4.4.4:0",
 		},
 		{
@@ -33,6 +33,18 @@ func TestRemoteAddrFromContext(t *testing.T) {
 			metadata:              metadata.Pairs("X-Forwarded-For", "5.5.5.5"),
 			trustedXForwardedFor:  []string{"X-Trusted-CDN"},
 			expectedRemoteAddress: "127.0.0.1:12345",
+		},
+		{
+			name:                  "read IP directly from CF-Connecting-IP",
+			metadata:              metadata.Pairs("CF-Connecting-IP", "203.0.113.10"),
+			trustedXForwardedFor:  []string{"CF-Connecting-IP"},
+			expectedRemoteAddress: "203.0.113.10:0",
+		},
+		{
+			name:                  "skip cloudflare IP in X-Forwarded-For chain",
+			metadata:              metadata.Pairs("X-Forwarded-For", "203.0.113.10, 172.64.144.180"),
+			trustedXForwardedFor:  []string{"X-Forwarded-For"},
+			expectedRemoteAddress: "203.0.113.10:0",
 		},
 	}
 
