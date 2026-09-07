@@ -18,7 +18,10 @@ func TestShouldSkipCloudflareIP(t *testing.T) {
 	}
 
 	for _, testCase := range cases {
-		resolver := NewRemoteAddrResolver([]string{"X-Forwarded-For"})
+		resolver := NewRemoteAddrResolver(RemoteAddrSettings{
+			Headers:   []string{"X-Forwarded-For"},
+			SkipCfIPs: true,
+		})
 		header := mapHeader{"X-Forwarded-For": testCase.ip + ", 203.0.113.10"}
 		addr := resolver.Resolve(header, &fakeAddr{value: "172.64.144.180:443"})
 		if testCase.skip {

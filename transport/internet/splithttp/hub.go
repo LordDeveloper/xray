@@ -170,11 +170,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 			Port: remoteAddr.(*net.TCPAddr).Port,
 		}
 	}
-	var trustedXFF []string
-	if h.socketSettings != nil {
-		trustedXFF = h.socketSettings.TrustedXForwardedFor
-	}
-	remoteAddr = http_proto.ApplyTrustedXForwardedFor(request.Header, trustedXFF, remoteAddr)
+	remoteAddr = http_proto.ApplyRemoteAddrHeaders(request.Header, internet.RemoteAddrSettingsFromSocket(h.socketSettings), remoteAddr)
 
 	var currentSession *httpSession
 	if sessionId != "" {

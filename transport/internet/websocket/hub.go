@@ -66,11 +66,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	}
 
 	remoteAddr := conn.RemoteAddr()
-	var trustedXFF []string
-	if h.socketSettings != nil {
-		trustedXFF = h.socketSettings.TrustedXForwardedFor
-	}
-	remoteAddr = http_proto.ApplyTrustedXForwardedFor(request.Header, trustedXFF, remoteAddr)
+	remoteAddr = http_proto.ApplyRemoteAddrHeaders(request.Header, internet.RemoteAddrSettingsFromSocket(h.socketSettings), remoteAddr)
 
 	h.ln.addConn(NewConnection(conn, remoteAddr, extraReader, h.ln.config.HeartbeatPeriod))
 }

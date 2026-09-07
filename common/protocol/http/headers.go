@@ -16,25 +16,23 @@ type HeaderReader interface {
 	Values(key string) []string
 }
 
-// ApplyTrustedXForwardedFor resolves remoteAddr from sockopt.trustedXForwardedFor header names.
-// Each entry is a header to inspect in order. Proxy/CDN addresses such as Cloudflare are skipped.
-// When the list is empty the connection address is returned unchanged.
-func ApplyTrustedXForwardedFor(header http.Header, trusted []string, remoteAddr net.Addr) net.Addr {
-	if len(trusted) == 0 {
+// ApplyRemoteAddrHeaders resolves remoteAddr from sockopt remote address settings.
+func ApplyRemoteAddrHeaders(header http.Header, settings RemoteAddrSettings, remoteAddr net.Addr) net.Addr {
+	if len(settings.Headers) == 0 {
 		if header.Get("X-Forwarded-For") != "" {
 			errors.LogWarning(context.Background(), `received "X-Forwarded-For" from `, remoteAddr, ` but "sockopt.trustedXForwardedFor" is not configured; ignoring it and using the real remote address`)
 		}
 		return remoteAddr
 	}
 
-	resolver := NewRemoteAddrResolver(trusted)
+	resolver := NewRemoteAddrResolver(settings)
 	resolved := resolver.Resolve(header, remoteAddr)
 	if resolved != remoteAddr {
 		return resolved
 	}
 
 	if header.Get("X-Forwarded-For") != "" {
-		for _, name := range trusted {
+		for _, name := range settings.Headers {
 			if strings.EqualFold(name, "X-Forwarded-For") {
 				return remoteAddr
 			}
@@ -44,12 +42,13 @@ func ApplyTrustedXForwardedFor(header http.Header, trusted []string, remoteAddr 
 	return remoteAddr
 }
 
+// ApplyTrustedXForwardedFor is kept for compatibility with older call sites.
+func ApplyTrustedXForwardedFor(header http.Header, trusted []string, remoteAddr net.Addr) net.Addr {
+	return ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: trusted}, remoteAddr)
+}
+
 // RemoveHopByHopHeaders removes hop by hop headers in http header list.
 func RemoveHopByHopHeaders(header http.Header) {
-	// Strip hop-by-hop header based on RFC:
-	// http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1
-	// https://www.mnot.net/blog/2011/07/11/what_proxies_must_do
-
 	header.Del("Proxy-Connection")
 	header.Del("Proxy-Authenticate")
 	header.Del("Proxy-Authorization")

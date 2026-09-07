@@ -12,7 +12,7 @@ import (
 	. "github.com/xtls/xray-core/common/protocol/http"
 )
 
-func TestApplyTrustedXForwardedFor(t *testing.T) {
+func TestApplyRemoteAddrHeaders(t *testing.T) {
 	remoteAddr := &gonet.TCPAddr{IP: gonet.ParseIP("127.0.0.1"), Port: 12345}
 	cfRemoteAddr := &gonet.TCPAddr{IP: gonet.ParseIP("172.64.144.180"), Port: 443}
 
@@ -20,7 +20,7 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header := http.Header{}
 		header.Add("X-Forwarded-For", "129.78.138.66, 129.78.64.103")
 
-		if addr := ApplyTrustedXForwardedFor(header, nil, remoteAddr); addr != remoteAddr {
+		if addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{}, remoteAddr); addr != remoteAddr {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
 	})
@@ -29,7 +29,7 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header := http.Header{}
 		header.Add("X-Forwarded-For", "129.78.138.66, 129.78.64.103")
 
-		addr := ApplyTrustedXForwardedFor(header, []string{"X-Forwarded-For"}, remoteAddr)
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"X-Forwarded-For"}}, remoteAddr)
 		if addr.String() != "129.78.138.66:0" {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
@@ -40,7 +40,7 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header.Add("X-Forwarded-For", "129.78.138.66, 129.78.64.103")
 		header.Add("X-Trusted-CDN", "")
 
-		addr := ApplyTrustedXForwardedFor(header, []string{"X-Trusted-CDN", "X-Forwarded-For"}, remoteAddr)
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"X-Trusted-CDN", "X-Forwarded-For"}}, remoteAddr)
 		if addr.String() != "129.78.138.66:0" {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
@@ -51,7 +51,7 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header.Add("X-Forwarded-For", "example.com")
 		header.Add("X-Trusted-CDN", "")
 
-		if addr := ApplyTrustedXForwardedFor(header, []string{"X-Trusted-CDN", "X-Forwarded-For"}, remoteAddr); addr != remoteAddr {
+		if addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"X-Trusted-CDN", "X-Forwarded-For"}}, remoteAddr); addr != remoteAddr {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
 	})
@@ -60,18 +60,28 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header := http.Header{}
 		header.Add("CF-Connecting-IP", "203.0.113.10")
 
-		addr := ApplyTrustedXForwardedFor(header, []string{"CF-Connecting-IP"}, cfRemoteAddr)
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"CF-Connecting-IP"}}, cfRemoteAddr)
 		if addr.String() != "203.0.113.10:0" {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
 	})
 
-	t.Run("skip cloudflare IP in X-Forwarded-For chain", func(t *testing.T) {
+	t.Run("skip cloudflare IP in X-Forwarded-For chain when skipCfIPs enabled", func(t *testing.T) {
 		header := http.Header{}
 		header.Add("X-Forwarded-For", "203.0.113.10, 172.64.144.180")
 
-		addr := ApplyTrustedXForwardedFor(header, []string{"X-Forwarded-For"}, cfRemoteAddr)
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"X-Forwarded-For"}, SkipCfIPs: true}, cfRemoteAddr)
 		if addr.String() != "203.0.113.10:0" {
+			t.Fatalf("unexpected remote address: %v", addr)
+		}
+	})
+
+	t.Run("keep cloudflare IP in chain when skipCfIPs disabled", func(t *testing.T) {
+		header := http.Header{}
+		header.Add("X-Forwarded-For", "172.64.144.180, 203.0.113.10")
+
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{Headers: []string{"X-Forwarded-For"}, SkipCfIPs: false}, cfRemoteAddr)
+		if addr.String() != "172.64.144.180:0" {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
 	})
@@ -81,7 +91,10 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 		header.Add("CF-Connecting-IP", "172.64.144.180")
 		header.Add("X-Forwarded-For", "203.0.113.10, 172.64.144.180")
 
-		addr := ApplyTrustedXForwardedFor(header, []string{"CF-Connecting-IP", "X-Forwarded-For"}, cfRemoteAddr)
+		addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{
+			Headers:   []string{"CF-Connecting-IP", "X-Forwarded-For"},
+			SkipCfIPs: true,
+		}, cfRemoteAddr)
 		if addr.String() != "203.0.113.10:0" {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
@@ -89,7 +102,7 @@ func TestApplyTrustedXForwardedFor(t *testing.T) {
 
 	t.Run("leave non-http transports unchanged without configured headers", func(t *testing.T) {
 		header := http.Header{}
-		if addr := ApplyTrustedXForwardedFor(header, nil, cfRemoteAddr); addr != cfRemoteAddr {
+		if addr := ApplyRemoteAddrHeaders(header, RemoteAddrSettings{}, cfRemoteAddr); addr != cfRemoteAddr {
 			t.Fatalf("unexpected remote address: %v", addr)
 		}
 	})

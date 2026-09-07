@@ -9,20 +9,26 @@ import (
 	xnet "github.com/xtls/xray-core/common/net"
 )
 
-// RemoteAddrResolver resolves a client address from configured proxy headers.
-// When no headers are configured it leaves the connection address unchanged.
-type RemoteAddrResolver struct {
-	headers []string
+// RemoteAddrSettings controls how inbound remote addresses are resolved from proxy headers.
+type RemoteAddrSettings struct {
+	Headers   []string
+	SkipCfIPs bool
 }
 
-// NewRemoteAddrResolver creates a resolver for sockopt.trustedXForwardedFor header names.
-func NewRemoteAddrResolver(headers []string) *RemoteAddrResolver {
-	if len(headers) == 0 {
+// RemoteAddrResolver resolves a client address from configured proxy headers.
+type RemoteAddrResolver struct {
+	settings RemoteAddrSettings
+}
+
+// NewRemoteAddrResolver creates a resolver for sockopt remote address settings.
+func NewRemoteAddrResolver(settings RemoteAddrSettings) *RemoteAddrResolver {
+	if len(settings.Headers) == 0 {
 		return nil
 	}
-	copied := make([]string, len(headers))
-	copy(copied, headers)
-	return &RemoteAddrResolver{headers: copied}
+	copied := make([]string, len(settings.Headers))
+	copy(copied, settings.Headers)
+	settings.Headers = copied
+	return &RemoteAddrResolver{settings: settings}
 }
 
 func parseHeaderIPs(value string) []xnet.Address {
@@ -45,9 +51,9 @@ func parseHeaderIPs(value string) []xnet.Address {
 	return addrs
 }
 
-func firstNonSkippedIP(addrs []xnet.Address) xnet.Address {
+func firstUsableIP(addrs []xnet.Address, skipCfIPs bool) xnet.Address {
 	for _, addr := range addrs {
-		if !shouldSkipRemoteIP(addr.IP()) {
+		if !shouldSkipRemoteIP(addr.IP(), skipCfIPs) {
 			return addr
 		}
 	}
@@ -72,22 +78,22 @@ func remoteIPFromAddr(remoteAddr net.Addr) net.IP {
 	return net.ParseIP(host)
 }
 
-// Resolve returns the client address from configured headers, skipping known proxy/CDN hops.
+// Resolve returns the client address from configured headers.
 func (r *RemoteAddrResolver) Resolve(headers HeaderReader, remoteAddr net.Addr) net.Addr {
-	if r == nil || len(r.headers) == 0 {
+	if r == nil || len(r.settings.Headers) == 0 {
 		return remoteAddr
 	}
 
-	for _, name := range r.headers {
+	for _, name := range r.settings.Headers {
 		if len(headers.Values(name)) == 0 {
 			continue
 		}
-		if addr := firstNonSkippedIP(parseHeaderIPs(headers.Get(name))); addr != nil {
+		if addr := firstUsableIP(parseHeaderIPs(headers.Get(name)), r.settings.SkipCfIPs); addr != nil {
 			return addrFromRemoteIP(addr)
 		}
 	}
 
-	if ip := remoteIPFromAddr(remoteAddr); ip != nil && !shouldSkipRemoteIP(ip) {
+	if ip := remoteIPFromAddr(remoteAddr); ip != nil && !shouldSkipRemoteIP(ip, r.settings.SkipCfIPs) {
 		return remoteAddr
 	}
 

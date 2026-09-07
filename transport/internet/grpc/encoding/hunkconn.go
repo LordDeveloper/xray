@@ -8,6 +8,7 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
+	http_proto "github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/common/signal/done"
 )
 
@@ -36,8 +37,8 @@ func NewHunkReadWriter(hc HunkConn, cancel context.CancelFunc) *HunkReaderWriter
 	return &HunkReaderWriter{hc, cancel, done.New(), nil, 0}
 }
 
-func NewHunkConn(hc HunkConn, cancel context.CancelFunc, trustedXForwardedFor []string) net.Conn {
-	rAddr := remoteAddrFromContext(hc.Context(), trustedXForwardedFor)
+func NewHunkConn(hc HunkConn, cancel context.CancelFunc, settings http_proto.RemoteAddrSettings) net.Conn {
+	rAddr := remoteAddrFromContext(hc.Context(), settings)
 	wrc := NewHunkReadWriter(hc, cancel)
 	return cnc.NewConnection(
 		cnc.ConnectionInput(wrc),

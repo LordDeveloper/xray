@@ -27,7 +27,7 @@ func (r mdHeaderReader) Values(key string) []string {
 	return r.md.Get(key)
 }
 
-func remoteAddrFromContext(ctx context.Context, trusted []string) net.Addr {
+func remoteAddrFromContext(ctx context.Context, settings http_proto.RemoteAddrSettings) net.Addr {
 	var remoteAddr net.Addr
 	if pr, ok := peer.FromContext(ctx); ok {
 		remoteAddr = pr.Addr
@@ -43,7 +43,7 @@ func remoteAddrFromContext(ctx context.Context, trusted []string) net.Addr {
 		return remoteAddr
 	}
 
-	resolver := http_proto.NewRemoteAddrResolver(trusted)
+	resolver := http_proto.NewRemoteAddrResolver(settings)
 	if resolver == nil {
 		if values := md.Get("X-Forwarded-For"); len(values) > 0 && values[0] != "" {
 			errors.LogWarning(context.Background(), `received "X-Forwarded-For" from `, remoteAddr, ` but "sockopt.trustedXForwardedFor" is not configured; ignoring it and using the real remote address`)

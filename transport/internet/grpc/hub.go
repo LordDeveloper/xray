@@ -8,6 +8,7 @@ import (
 	"github.com/xtls/xray-core/common"
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
+	http_proto "github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/grpc/encoding"
 	"github.com/xtls/xray-core/transport/internet/reality"
@@ -23,21 +24,21 @@ type Listener struct {
 	handler              internet.ConnHandler
 	local                net.Addr
 	config               *Config
-	trustedXForwardedFor []string
+	remoteAddrSettings   http_proto.RemoteAddrSettings
 
 	s *grpc.Server
 }
 
 func (l Listener) Tun(server encoding.GRPCService_TunServer) error {
 	tunCtx, cancel := context.WithCancel(l.ctx)
-	l.handler(encoding.NewHunkConn(server, cancel, l.trustedXForwardedFor))
+	l.handler(encoding.NewHunkConn(server, cancel, l.remoteAddrSettings))
 	<-tunCtx.Done()
 	return nil
 }
 
 func (l Listener) TunMulti(server encoding.GRPCService_TunMultiServer) error {
 	tunCtx, cancel := context.WithCancel(l.ctx)
-	l.handler(encoding.NewMultiHunkConn(server, cancel, l.trustedXForwardedFor))
+	l.handler(encoding.NewMultiHunkConn(server, cancel, l.remoteAddrSettings))
 	<-tunCtx.Done()
 	return nil
 }
@@ -75,9 +76,7 @@ func Listen(ctx context.Context, address net.Address, port net.Port, settings *i
 	}
 
 	listener.ctx = ctx
-	if settings.SocketSettings != nil {
-		listener.trustedXForwardedFor = settings.SocketSettings.TrustedXForwardedFor
-	}
+	listener.remoteAddrSettings = internet.RemoteAddrSettingsFromSocket(settings.SocketSettings)
 
 	config := tls.ConfigFromStreamSettings(settings)
 

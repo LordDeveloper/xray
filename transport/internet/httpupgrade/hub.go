@@ -81,11 +81,7 @@ func (s *server) upgrade(conn net.Conn) (stat.Connection, error) {
 	}
 
 	remoteAddr := conn.RemoteAddr()
-	var trustedXFF []string
-	if s.socketSettings != nil {
-		trustedXFF = s.socketSettings.TrustedXForwardedFor
-	}
-	remoteAddr = http_proto.ApplyTrustedXForwardedFor(req.Header, trustedXFF, remoteAddr)
+	remoteAddr = http_proto.ApplyRemoteAddrHeaders(req.Header, internet.RemoteAddrSettingsFromSocket(s.socketSettings), remoteAddr)
 
 	return stat.Connection(newConnection(conn, remoteAddr)), nil
 }

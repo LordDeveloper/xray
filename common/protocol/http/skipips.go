@@ -4,18 +4,17 @@ import (
 	"net"
 )
 
-var defaultSkipRemoteNets []*net.IPNet
+var cloudflareSkipNets []*net.IPNet
 
 func init() {
 	for _, cidr := range cloudflareIPCIDRs {
 		_, n, err := net.ParseCIDR(cidr)
 		if err == nil {
-			defaultSkipRemoteNets = append(defaultSkipRemoteNets, n)
+			cloudflareSkipNets = append(cloudflareSkipNets, n)
 		}
 	}
 }
 
-// cloudflareIPCIDRs are Cloudflare anycast ranges used to ignore proxy hops.
 var cloudflareIPCIDRs = []string{
 	"173.245.48.0/20",
 	"103.21.244.0/22",
@@ -32,20 +31,13 @@ var cloudflareIPCIDRs = []string{
 	"104.24.0.0/14",
 	"172.64.0.0/13",
 	"131.0.72.0/22",
-	"2400:cb00::/32",
-	"2606:4700::/32",
-	"2803:f800::/32",
-	"2405:b500::/32",
-	"2405:8100::/32",
-	"2a06:98c0::/29",
-	"2c0f:f248::/32",
 }
 
-func shouldSkipRemoteIP(ip net.IP) bool {
-	if ip == nil {
-		return true
+func shouldSkipRemoteIP(ip net.IP, skipCfIPs bool) bool {
+	if !skipCfIPs || ip == nil {
+		return false
 	}
-	for _, n := range defaultSkipRemoteNets {
+	for _, n := range cloudflareSkipNets {
 		if n.Contains(ip) {
 			return true
 		}

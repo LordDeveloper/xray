@@ -8,6 +8,7 @@ import (
 	"github.com/xtls/xray-core/common/errors"
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/net/cnc"
+	http_proto "github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/common/signal/done"
 )
 
@@ -31,8 +32,8 @@ func NewMultiHunkReadWriter(hc MultiHunkConn, cancel context.CancelFunc) *MultiH
 	return &MultiHunkReaderWriter{hc, cancel, done.New(), nil}
 }
 
-func NewMultiHunkConn(hc MultiHunkConn, cancel context.CancelFunc, trustedXForwardedFor []string) net.Conn {
-	rAddr := remoteAddrFromContext(hc.Context(), trustedXForwardedFor)
+func NewMultiHunkConn(hc MultiHunkConn, cancel context.CancelFunc, settings http_proto.RemoteAddrSettings) net.Conn {
+	rAddr := remoteAddrFromContext(hc.Context(), settings)
 	wrc := NewMultiHunkReadWriter(hc, cancel)
 	return cnc.NewConnection(
 		cnc.ConnectionInputMulti(wrc),

@@ -12,6 +12,7 @@ import (
 	"github.com/xtls/xray-core/common/net"
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/common/utils"
+	http_proto "github.com/xtls/xray-core/common/protocol/http"
 	"github.com/xtls/xray-core/transport/internet"
 	"github.com/xtls/xray-core/transport/internet/grpc/encoding"
 	"github.com/xtls/xray-core/transport/internet/reality"
@@ -62,7 +63,7 @@ func dialgRPC(ctx context.Context, dest net.Destination, streamSettings *interne
 		if err != nil {
 			return nil, errors.New("Cannot dial gRPC").Base(err)
 		}
-		return encoding.NewMultiHunkConn(grpcService, nil, nil), nil
+		return encoding.NewMultiHunkConn(grpcService, nil, http_proto.RemoteAddrSettings{}), nil
 	}
 
 	errors.LogDebug(ctx, "using gRPC tun mode service name: `"+grpcSettings.getServiceName()+"` stream name: `"+grpcSettings.getTunStreamName()+"`")
@@ -71,7 +72,7 @@ func dialgRPC(ctx context.Context, dest net.Destination, streamSettings *interne
 		return nil, errors.New("Cannot dial gRPC").Base(err)
 	}
 
-	return encoding.NewHunkConn(grpcService, nil, nil), nil
+	return encoding.NewHunkConn(grpcService, nil, http_proto.RemoteAddrSettings{}), nil
 }
 
 func getGrpcClient(ctx context.Context, dest net.Destination, streamSettings *internet.MemoryStreamConfig) (*grpc.ClientConn, error) {

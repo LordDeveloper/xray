@@ -747,6 +747,7 @@ type SocketConfig struct {
 	AddressPortStrategy        AddressPortStrategy  `protobuf:"varint,21,opt,name=address_port_strategy,json=addressPortStrategy,proto3,enum=xray.transport.internet.AddressPortStrategy" json:"address_port_strategy,omitempty"`
 	HappyEyeballs              *HappyEyeballsConfig `protobuf:"bytes,22,opt,name=happy_eyeballs,json=happyEyeballs,proto3" json:"happy_eyeballs,omitempty"`
 	TrustedXForwardedFor       []string             `protobuf:"bytes,23,rep,name=trusted_x_forwarded_for,json=trustedXForwardedFor,proto3" json:"trusted_x_forwarded_for,omitempty"`
+	SkipCfIPs                  bool                 `protobuf:"varint,24,opt,name=skip_cf_ips,json=skipCfIPs,proto3" json:"skip_cf_ips,omitempty"`
 	unknownFields              protoimpl.UnknownFields
 	sizeCache                  protoimpl.SizeCache
 }
@@ -926,6 +927,13 @@ func (x *SocketConfig) GetTrustedXForwardedFor() []string {
 		return x.TrustedXForwardedFor
 	}
 	return nil
+}
+
+func (x *SocketConfig) GetSkipCfIPs() bool {
+	if x != nil {
+		return x.SkipCfIPs
+	}
+	return false
 }
 
 type HappyEyeballsConfig struct {
