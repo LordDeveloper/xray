@@ -80,9 +80,9 @@ func dialhttpUpgrade(ctx context.Context, dest net.Destination, streamSettings *
 		requestURL.Scheme = "http"
 	}
 
-	requestURL.Host = transportConfiguration.Host
+	requestURL.Host = internet.PickFirstHost(transportConfiguration.EffectiveHosts(), "")
 	if requestURL.Host == "" && tConfig != nil {
-		requestURL.Host = tConfig.ServerName
+		requestURL.Host = internet.PickFirstHost(tConfig.EffectiveServerNames(), tConfig.ServerName)
 	}
 	if requestURL.Host == "" {
 		requestURL.Host = dest.Address.String()

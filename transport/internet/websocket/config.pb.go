@@ -29,6 +29,7 @@ type Config struct {
 	AcceptProxyProtocol bool                   `protobuf:"varint,4,opt,name=accept_proxy_protocol,json=acceptProxyProtocol,proto3" json:"accept_proxy_protocol,omitempty"`
 	Ed                  uint32                 `protobuf:"varint,5,opt,name=ed,proto3" json:"ed,omitempty"`
 	HeartbeatPeriod     uint32                 `protobuf:"varint,6,opt,name=heartbeatPeriod,proto3" json:"heartbeatPeriod,omitempty"`
+	Hosts               []string               `protobuf:"bytes,7,rep,name=hosts,proto3" json:"hosts,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -103,6 +104,13 @@ func (x *Config) GetHeartbeatPeriod() uint32 {
 		return x.HeartbeatPeriod
 	}
 	return 0
+}
+
+func (x *Config) GetHosts() []string {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
 }
 
 var File_transport_internet_websocket_config_proto protoreflect.FileDescriptor

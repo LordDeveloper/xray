@@ -206,6 +206,7 @@ type Config struct {
 	EchConfigList        string                 `protobuf:"bytes,19,opt,name=ech_config_list,json=echConfigList,proto3" json:"ech_config_list,omitempty"`
 	EchSocketSettings    *internet.SocketConfig `protobuf:"bytes,21,opt,name=ech_socket_settings,json=echSocketSettings,proto3" json:"ech_socket_settings,omitempty"`
 	PinnedPeerCertSha256 [][]byte               `protobuf:"bytes,22,rep,name=pinned_peer_cert_sha256,json=pinnedPeerCertSha256,proto3" json:"pinned_peer_cert_sha256,omitempty"`
+	ServerNames          []string               `protobuf:"bytes,23,rep,name=server_names,json=serverNames,proto3" json:"server_names,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -355,6 +356,13 @@ func (x *Config) GetEchSocketSettings() *internet.SocketConfig {
 func (x *Config) GetPinnedPeerCertSha256() [][]byte {
 	if x != nil {
 		return x.PinnedPeerCertSha256
+	}
+	return nil
+}
+
+func (x *Config) GetServerNames() []string {
+	if x != nil {
+		return x.ServerNames
 	}
 	return nil
 }

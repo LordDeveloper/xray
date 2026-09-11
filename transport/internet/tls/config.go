@@ -273,11 +273,25 @@ func getNewGetCertificateFunc(certs []*tls.Certificate, rejectUnknownSNI bool) f
 	}
 }
 
+func (c *Config) EffectiveServerNames() []string {
+	if len(c.ServerNames) > 0 {
+		return c.ServerNames
+	}
+	if c.ServerName != "" {
+		return []string{c.ServerName}
+	}
+	return nil
+}
+
 func (c *Config) parseServerName() string {
-	if IsFromMitm(c.ServerName) {
+	names := c.EffectiveServerNames()
+	if len(names) == 0 {
 		return ""
 	}
-	return c.ServerName
+	if IsFromMitm(names[0]) {
+		return ""
+	}
+	return names[0]
 }
 
 func (r *RandCarrier) verifyPeerCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) (err error) {

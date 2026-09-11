@@ -337,9 +337,9 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 	} else {
 		requestURL.Scheme = "http"
 	}
-	requestURL.Host = transportConfiguration.Host
+	requestURL.Host = internet.PickFirstHost(transportConfiguration.EffectiveHosts(), "")
 	if requestURL.Host == "" && tlsConfig != nil {
-		requestURL.Host = tlsConfig.ServerName
+		requestURL.Host = internet.PickFirstHost(tlsConfig.EffectiveServerNames(), tlsConfig.ServerName)
 	}
 	if requestURL.Host == "" && realityConfig != nil {
 		requestURL.Host = realityConfig.ServerName
@@ -403,9 +403,9 @@ func Dial(ctx context.Context, dest net.Destination, streamSettings *internet.Me
 			requestURL2.Scheme = "http"
 		}
 		config2 := memory2.ProtocolSettings.(*Config)
-		requestURL2.Host = config2.Host
+		requestURL2.Host = internet.PickFirstHost(config2.EffectiveHosts(), "")
 		if requestURL2.Host == "" && tlsConfig2 != nil {
-			requestURL2.Host = tlsConfig2.ServerName
+			requestURL2.Host = internet.PickFirstHost(tlsConfig2.EffectiveServerNames(), tlsConfig2.ServerName)
 		}
 		if requestURL2.Host == "" && realityConfig2 != nil {
 			requestURL2.Host = realityConfig2.ServerName
