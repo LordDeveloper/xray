@@ -28,6 +28,7 @@ type Config struct {
 	Header              map[string]string      `protobuf:"bytes,3,rep,name=header,proto3" json:"header,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	AcceptProxyProtocol bool                   `protobuf:"varint,4,opt,name=accept_proxy_protocol,json=acceptProxyProtocol,proto3" json:"accept_proxy_protocol,omitempty"`
 	Ed                  uint32                 `protobuf:"varint,5,opt,name=ed,proto3" json:"ed,omitempty"`
+	Hosts               []string               `protobuf:"bytes,6,rep,name=hosts,proto3" json:"hosts,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -95,6 +96,13 @@ func (x *Config) GetEd() uint32 {
 		return x.Ed
 	}
 	return 0
+}
+
+func (x *Config) GetHosts() []string {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
 }
 
 var File_transport_internet_httpupgrade_config_proto protoreflect.FileDescriptor

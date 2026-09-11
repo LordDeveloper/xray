@@ -93,8 +93,8 @@ func (h *requestHandler) upsertSession(sessionId string) *httpSession {
 }
 
 func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
-	if len(h.host) > 0 && !internet.IsValidHTTPHost(request.Host, h.host) {
-		errors.LogInfo(context.Background(), "failed to validate host, request:", request.Host, ", config:", h.host)
+	if hosts := h.config.EffectiveHosts(); len(hosts) > 0 && !internet.IsValidHTTPHostAny(request.Host, hosts) {
+		errors.LogInfo(context.Background(), "failed to validate host, request:", request.Host, ", config:", hosts)
 		writer.WriteHeader(http.StatusNotFound)
 		return
 	}

@@ -16,6 +16,16 @@ import (
 	"github.com/xtls/xray-core/transport/internet"
 )
 
+func (c *Config) EffectiveHosts() []string {
+	if len(c.Hosts) > 0 {
+		return c.Hosts
+	}
+	if c.Host != "" {
+		return []string{c.Host}
+	}
+	return nil
+}
+
 func (c *Config) GetNormalizedPath() string {
 	pathAndQuery := strings.SplitN(c.Path, "?", 2)
 	path := pathAndQuery[0]

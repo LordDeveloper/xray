@@ -189,6 +189,7 @@ type Config struct {
 	ServerMaxHeaderBytes int32                  `protobuf:"varint,27,opt,name=serverMaxHeaderBytes,proto3" json:"serverMaxHeaderBytes,omitempty"`
 	SessionIDTable       string                 `protobuf:"bytes,28,opt,name=sessionIDTable,proto3" json:"sessionIDTable,omitempty"`
 	SessionIDLength      *RangeConfig           `protobuf:"bytes,29,opt,name=sessionIDLength,proto3" json:"sessionIDLength,omitempty"`
+	Hosts                []string               `protobuf:"bytes,30,rep,name=hosts,proto3" json:"hosts,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -422,6 +423,13 @@ func (x *Config) GetSessionIDTable() string {
 func (x *Config) GetSessionIDLength() *RangeConfig {
 	if x != nil {
 		return x.SessionIDLength
+	}
+	return nil
+}
+
+func (x *Config) GetHosts() []string {
+	if x != nil {
+		return x.Hosts
 	}
 	return nil
 }

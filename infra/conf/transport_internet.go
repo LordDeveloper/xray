@@ -131,7 +131,7 @@ func (c *TCPConfig) Build() (proto.Message, error) {
 }
 
 type WebSocketConfig struct {
-	Host                string            `json:"host"`
+	Host                StringOrList      `json:"host"`
 	Path                string            `json:"path"`
 	Headers             map[string]string `json:"headers"`
 	AcceptProxyProtocol bool              `json:"acceptProxyProtocol"`
@@ -155,15 +155,17 @@ func (c *WebSocketConfig) Build() (proto.Message, error) {
 	for k, v := range c.Headers {
 		if strings.ToLower(k) == "host" {
 			errors.PrintDeprecatedFeatureWarning(`"host" in "headers"`, `independent "host"`)
-			if c.Host == "" {
-				c.Host = v
+			if len(c.Host) == 0 {
+				c.Host = StringOrList{v}
 			}
 			delete(c.Headers, k)
 		}
 	}
+	hosts := c.Host.Values()
 	config := &websocket.Config{
 		Path:                path,
-		Host:                c.Host,
+		Host:                c.Host.First(),
+		Hosts:               hosts,
 		Header:              c.Headers,
 		AcceptProxyProtocol: c.AcceptProxyProtocol,
 		Ed:                  ed,
@@ -173,7 +175,7 @@ func (c *WebSocketConfig) Build() (proto.Message, error) {
 }
 
 type HttpUpgradeConfig struct {
-	Host                string            `json:"host"`
+	Host                StringOrList      `json:"host"`
 	Path                string            `json:"path"`
 	Headers             map[string]string `json:"headers"`
 	AcceptProxyProtocol bool              `json:"acceptProxyProtocol"`
@@ -198,9 +200,11 @@ func (c *HttpUpgradeConfig) Build() (proto.Message, error) {
 			return nil, errors.New(`"headers" can't contain "host"`)
 		}
 	}
+	hosts := c.Host.Values()
 	config := &httpupgrade.Config{
 		Path:                path,
-		Host:                c.Host,
+		Host:                c.Host.First(),
+		Hosts:               hosts,
 		Header:              c.Headers,
 		AcceptProxyProtocol: c.AcceptProxyProtocol,
 		Ed:                  ed,
@@ -209,7 +213,7 @@ func (c *HttpUpgradeConfig) Build() (proto.Message, error) {
 }
 
 type SplitHTTPConfig struct {
-	Host                 string            `json:"host"`
+	Host                 StringOrList      `json:"host"`
 	Path                 string            `json:"path"`
 	Mode                 string            `json:"mode"`
 	Headers              map[string]string `json:"headers"`
@@ -412,8 +416,10 @@ func (c *SplitHTTPConfig) Build() (proto.Message, error) {
 		c.Xmux.HMaxReusableSecs.To = 3000
 	}
 
+	hosts := c.Host.Values()
 	config := &splithttp.Config{
-		Host:                 c.Host,
+		Host:                 c.Host.First(),
+		Hosts:                hosts,
 		Path:                 c.Path,
 		Mode:                 c.Mode,
 		Headers:              c.Headers,
@@ -672,7 +678,7 @@ type QuicParamsConfig struct {
 type TLSConfig struct {
 	AllowInsecure           bool             `json:"allowInsecure"`
 	Certs                   []*TLSCertConfig `json:"certificates"`
-	ServerName              string           `json:"serverName"`
+	ServerName              StringOrList     `json:"serverName"`
 	ALPN                    *StringList      `json:"alpn"`
 	EnableSessionResumption bool             `json:"enableSessionResumption"`
 	DisableSystemRoot       bool             `json:"disableSystemRoot"`
@@ -701,9 +707,10 @@ func (c *TLSConfig) Build() (proto.Message, error) {
 		}
 		config.Certificate[idx] = cert
 	}
-	serverName := c.ServerName
-	if len(c.ServerName) > 0 {
-		config.ServerName = serverName
+	serverNames := c.ServerName.Values()
+	if len(serverNames) > 0 {
+		config.ServerName = serverNames[0]
+		config.ServerNames = serverNames
 	}
 	if c.ALPN != nil && len(*c.ALPN) > 0 {
 		config.NextProtocol = []string(*c.ALPN)

@@ -113,9 +113,9 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 
 	if browser_dialer.HasBrowserDialer() {
 		// For Browser Dialer's optimized IP and non-standard port
-		host := wsSettings.Host
-		if host == "" && tConfig.ServerName != "" {
-			host = tConfig.ServerName
+		host := internet.PickFirstHost(wsSettings.EffectiveHosts(), "")
+		if host == "" && tConfig != nil {
+			host = internet.PickFirstHost(tConfig.EffectiveServerNames(), tConfig.ServerName)
 		}
 		if host == "" {
 			host = dest.Address.String()
@@ -141,10 +141,11 @@ func dialWebSocket(ctx context.Context, dest net.Destination, streamSettings *in
 
 	header := wsSettings.GetRequestHeader()
 	// See dialer.DialContext()
-	header.Set("Host", wsSettings.Host)
-	if header.Get("Host") == "" && tConfig != nil {
-		header.Set("Host", tConfig.ServerName)
+	hostHeader := internet.PickFirstHost(wsSettings.EffectiveHosts(), "")
+	if hostHeader == "" && tConfig != nil {
+		hostHeader = internet.PickFirstHost(tConfig.EffectiveServerNames(), tConfig.ServerName)
 	}
+	header.Set("Host", hostHeader)
 	if header.Get("Host") == "" {
 		header.Set("Host", dest.Address.String())
 	}

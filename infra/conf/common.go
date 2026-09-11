@@ -13,6 +13,39 @@ import (
 	"github.com/xtls/xray-core/common/protocol"
 )
 
+// StringOrList accepts either a JSON string or a JSON string array.
+type StringOrList []string
+
+func (v StringOrList) First() string {
+	if len(v) == 0 {
+		return ""
+	}
+	return v[0]
+}
+
+func (v StringOrList) Values() []string {
+	return []string(v)
+}
+
+// UnmarshalJSON implements encoding/json.Unmarshaler.
+func (v *StringOrList) UnmarshalJSON(data []byte) error {
+	var strarray []string
+	if err := json.Unmarshal(data, &strarray); err == nil {
+		*v = StringOrList(strarray)
+		return nil
+	}
+	var rawstr string
+	if err := json.Unmarshal(data, &rawstr); err == nil {
+		if rawstr != "" {
+			*v = StringOrList{rawstr}
+		} else {
+			*v = nil
+		}
+		return nil
+	}
+	return errors.New("expected string or string array: ", string(data))
+}
+
 type StringList []string
 
 func NewStringList(raw []string) *StringList {
