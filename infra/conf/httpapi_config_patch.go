@@ -104,6 +104,8 @@ func validateOutboundRaw(raw json.RawMessage) error {
 
 // PatchConfigInbounds upserts validated inbound JSON objects into the config file.
 func PatchConfigInbounds(configPath string, upsert []json.RawMessage, removeTags []string) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	for _, raw := range upsert {
 		if err := validateInboundRaw(raw); err != nil {
 			return err
@@ -153,6 +155,8 @@ func MergeInboundPreserveClients(configPath string, patch json.RawMessage) (json
 // PatchConfigInboundsPreserveClients updates inbound meta fields in config.json without rewriting clients.
 // Returns per-inbound clients_count after patch (same order as patches).
 func PatchConfigInboundsPreserveClients(configPath string, patches []json.RawMessage) ([]int, error) {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if len(patches) == 0 {
 		return nil, errors.New("inbounds array is required")
 	}
@@ -297,6 +301,8 @@ func stripInboundClientsForBuildMap(m map[string]interface{}) (json.RawMessage, 
 
 // PatchConfigOutbounds upserts validated outbound JSON objects into the config file.
 func PatchConfigOutbounds(configPath string, upsert []json.RawMessage, removeTags []string) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	for _, raw := range upsert {
 		if err := validateOutboundRaw(raw); err != nil {
 			return err
@@ -314,6 +320,8 @@ func PatchConfigOutbounds(configPath string, upsert []json.RawMessage, removeTag
 
 // PatchConfigInboundUsers merges clients from request settings into an existing inbound in the config file.
 func PatchConfigInboundUsers(configPath string, patches []apiserver.InboundUserFilePatch) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if len(patches) == 0 {
 		return errors.New("inbounds array is required")
 	}
@@ -344,6 +352,8 @@ func PatchConfigInboundUsers(configPath string, patches []apiserver.InboundUserF
 
 // PatchConfigInboundUsersRemove removes users by email from an inbound in the config file.
 func PatchConfigInboundUsersRemove(configPath, tag string, emails []string) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if tag == "" {
 		return errors.New("tag is required")
 	}
@@ -618,14 +628,28 @@ func validateAndWriteConfig(configPath string, root map[string]interface{}) erro
 	if err := tmp.Close(); err != nil {
 		return errors.New("close temp config").Base(err)
 	}
-	if err := os.Rename(tmpPath, configPath); err != nil {
+	if err := replaceConfigFile(tmpPath, configPath); err != nil {
 		return errors.New("replace config file").Base(err)
 	}
 	return nil
 }
 
+// replaceConfigFile atomically replaces configPath. On Windows the first
+// rename can fail while the destination exists; remove-and-retry stays inside
+// the config write lock so another mutation cannot observe the gap.
+func replaceConfigFile(tmpPath, configPath string) error {
+	if err := os.Rename(tmpPath, configPath); err == nil {
+		return nil
+	} else if rmErr := os.Remove(configPath); rmErr != nil {
+		return err
+	}
+	return os.Rename(tmpPath, configPath)
+}
+
 // PatchConfigRulesAdd merges validated routing rules from request JSON into the config file.
 func PatchConfigRulesAdd(configPath string, routing json.RawMessage, prepend bool) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if err := ValidateRoutingRules(routing); err != nil {
 		return err
 	}
@@ -659,6 +683,8 @@ func PatchConfigRulesAdd(configPath string, routing json.RawMessage, prepend boo
 
 // PatchConfigRulesEdit replaces one routing rule in the config file by ruleTag.
 func PatchConfigRulesEdit(configPath, ruleTag string, rule json.RawMessage) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if ruleTag == "" {
 		return errors.New("rule_tag is required")
 	}
@@ -735,6 +761,8 @@ func wrapRoutingRulesInput(rule json.RawMessage) (json.RawMessage, error) {
 
 // PatchConfigRulesRemove removes routing rules from the config file by ruleTag and/or index.
 func PatchConfigRulesRemove(configPath string, ruleTags []string, indices []int) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if len(ruleTags) == 0 && len(indices) == 0 {
 		return errors.New("rule_tags or indices required")
 	}
@@ -781,6 +809,8 @@ func PatchConfigRulesRemove(configPath string, ruleTags []string, indices []int)
 
 // PatchConfigRulesReplace replaces the entire routing.rules list (and optional domainStrategy/domainMatcher).
 func PatchConfigRulesReplace(configPath string, routing json.RawMessage) error {
+	apiserver.LockConfigWrite()
+	defer apiserver.UnlockConfigWrite()
 	if err := ValidateRoutingRules(routing); err != nil {
 		return err
 	}
