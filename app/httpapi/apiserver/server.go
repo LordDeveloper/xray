@@ -1650,7 +1650,10 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	LockConfigWrite()
+	err = os.WriteFile(path, data, 0o644)
+	UnlockConfigWrite()
+	if err != nil {
 		writeAPIError(w, err)
 		return
 	}

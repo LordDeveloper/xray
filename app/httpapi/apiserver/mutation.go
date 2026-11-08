@@ -90,6 +90,14 @@ func writeBulkTooLarge(w http.ResponseWriter, count int) {
 	})
 }
 
+func isMissingUserErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "not found") || strings.Contains(msg, "no such user")
+}
+
 func isAlreadyExistsUserErr(err error) bool {
 	if err == nil {
 		return false
@@ -175,7 +183,7 @@ func (s *Server) removeUsersPartial(ctx context.Context, tag string, emails []st
 			continue
 		}
 		dropped := userconn.Kick(tag, email)
-		if err := s.protoAlterRemoveUser(ctx, tag, email); err != nil {
+		if err := s.protoAlterRemoveUser(ctx, tag, email); err != nil && !isMissingUserErr(err) {
 			res.Failed++
 			res.Errors = append(res.Errors, userOpError{Email: email, Message: err.Error()})
 			if atomic {

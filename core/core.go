@@ -23,7 +23,7 @@ var (
 	// Default matches the latest fork release tag (vX.Y.Z). CI overrides via versionOverride.
 	Version_x byte = 1
 	Version_y byte = 0
-	Version_z byte = 7
+	Version_z byte = 12
 )
 
 var (
@@ -31,7 +31,7 @@ var (
 	codename = "Xray, Penetrates Everything."
 	intro    = "A unified platform for anti-censorship."
 	// versionOverride is set at link time from the git release tag, e.g.:
-	// -X github.com/xtls/xray-core/core.versionOverride=1.0.7
+	// -X github.com/xtls/xray-core/core.versionOverride=1.0.12
 	versionOverride = ""
 )
 
